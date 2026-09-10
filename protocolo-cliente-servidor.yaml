@@ -1,0 +1,279 @@
+openapi: 3.0.3
+info:
+  title: Protocolo de Comunicação - Autenticação e Usuários
+  description: |-
+    Modelo do protocolo REST/HTTP para autenticação (login/logout) e CRUD de usuários,
+    para uso no trabalho prático da disciplina.
+    Padroniza rotas, cabeçalhos, corpo de requisição (JSON) e respostas.
+
+    Revisão para a 1ª entrega parcial (login, logout e CRUD de usuários):
+    - As operações de leitura/atualização/remoção do próprio usuário passaram a usar
+      o recurso "/users/me", identificando o usuário exclusivamente pelo token Bearer
+      (conforme requisito: "recebe um identificador único (token) e identifica o usuário"),
+      em vez de um "{id}" na URL. Isso evita que um cliente informe o id de outro usuário.
+    - Foram adicionadas as restrições de dado (não funcionais) de e-mail e senha
+      diretamente nos schemas, para que todas as implementações validem igual.
+  version: 1.1.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Servidor de Desenvolvimento Local
+
+paths:
+  /auth/login:
+    post:
+      summary: Autenticar usuário
+      description: Valida credenciais e retorna um token de acesso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticação realizada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Requisição inválida ou corpo mal formatado.
+        '401':
+          description: Credenciais inválidas.
+
+  /auth/logout:
+    post:
+      summary: Encerrar sessão do usuário
+      description: |-
+        Invalida o token de acesso atual do usuário autenticado, removendo-o da
+        "whitelist" de tokens ativos (ou incluindo-o em uma "blacklist"). Após o
+        logout, o token não deve dar acesso a nenhuma rota além de /auth/login e
+        POST /users (criação de usuário).
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout realizado com sucesso, sem conteúdo de retorno.
+        '401':
+          description: Token ausente, inválido ou expirado.
+
+  /users:
+    #esta função será usada nas funcionalidades de Admin, portanto, não é necessário para a primeira entrega;
+    # get:
+    #   summary: Listar todos os usuários
+    #   description: Retorna uma lista com todos os usuários cadastrados no sistema.
+    #   security:
+    #     - bearerAuth: []
+    #   parameters:
+    #     - name: nome
+    #       in: query
+    #       description: Filtrar usuários por nome
+    #       required: false
+    #       schema:
+    #         type: string
+    #   responses:
+    #     '200':
+    #       description: Lista recuperada com sucesso.
+    #       content:
+    #         application/json:
+    #           schema:
+    #             type: array
+    #             items:
+    #               $ref: '#/components/schemas/UserResponse'
+    #     '401':
+    #       description: Token ausente, inválido ou expirado.
+
+    post:
+      summary: Criar um novo usuário
+      description: |-
+        Cadastra um novo usuário no sistema. Se o e-mail já existir no banco,
+        o servidor deve responder 409 e o cliente deve orientar o usuário a
+        fazer login em vez de se cadastrar novamente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+      responses:
+        '201':
+          description: Usuário criado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
+        '409':
+          description: E-mail já cadastrado.
+
+  /users/me:
+    get:
+      summary: Buscar dados do usuário autenticado
+      description: |-
+        Identifica o usuário exclusivamente pelo token Bearer enviado e retorna
+        seus dados.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuário encontrado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Token ausente, inválido ou expirado.
+
+    put:
+      summary: Atualizar usuário autenticado
+      description: |-
+        Atualiza todos os dados do usuário identificado pelo token Bearer enviado.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+      responses:
+        '200':
+          description: Usuário atualizado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
+        '401':
+          description: Token ausente, inválido ou expirado.
+
+    patch:
+      summary: Atualizar parcialmente usuário autenticado
+      description: |-
+        Atualiza um ou mais campos do usuário identificado pelo token Bearer enviado.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPatchRequest'
+      responses:
+        '200':
+          description: Usuário atualizado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
+        '401':
+          description: Token ausente, inválido ou expirado.
+
+    delete:
+      summary: Remover usuário autenticado
+      description: |-
+        Exclui o usuário identificado pelo token Bearer enviado. A confirmação da
+        exclusão junto ao usuário (sim/não) é responsabilidade do cliente antes de
+        chamar esta rota: se a resposta do usuário for negativa, o cliente não deve
+        efetuar a chamada.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Usuário removido com sucesso, sem conteúdo de retorno.
+        '401':
+          description: Token ausente, inválido ou expirado.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - senha
+      properties:
+        email:
+          $ref: '#/components/schemas/Email'
+        senha:
+          $ref: '#/components/schemas/Senha'
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        usuario:
+          $ref: '#/components/schemas/UserResponse'
+
+    UserRequest:
+      type: object
+      required:
+        - nome
+        - email
+        - senha
+      properties:
+        nome:
+          type: string
+          example: "João da Silva"
+        email:
+          $ref: '#/components/schemas/Email'
+        senha:
+          $ref: '#/components/schemas/Senha'
+
+    UserPatchRequest:
+      type: object
+      properties:
+        nome:
+          type: string
+          example: "João da Silva"
+        email:
+          $ref: '#/components/schemas/Email'
+        senha:
+          $ref: '#/components/schemas/Senha'
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: "João da Silva"
+        email:
+          type: string
+          format: email
+          example: "aluno_joao@exemplo.com"
+
+    Email:
+      type: string
+      format: email
+      minLength: 5
+      maxLength: 30
+      pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+      description: |-
+        Deve conter obrigatoriamente "@" e um domínio.
+        Tamanho entre 5 e 30 caracteres.
+      example: "aluno_joao@exemplo.com"
+
+    Senha:
+      type: string
+      format: password
+      minLength: 6
+      maxLength: 20
+      pattern: '^[a-zA-Z0-9]+$'
+      description: |-
+        Alfanumérica (maiúsculas e/ou minúsculas e dígitos), sem caracteres especiais.
+        Tamanho entre 6 e 20 caracteres.
+      example: "senha123"
