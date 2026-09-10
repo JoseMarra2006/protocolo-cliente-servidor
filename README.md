@@ -1,0 +1,128 @@
+# Protocolo Cliente-Servidor — E-commerce
+
+Este repositório contém o **protocolo de comunicação compartilhado** usado na disciplina de Tecnologias Cliente-Servidor. Cada aluno implementa seu próprio cliente e servidor, em linguagem e framework livres, mas **todos precisam falar a mesma "língua"** na hora de trocar requisições HTTP — é isso que este arquivo define.
+
+Se o seu cliente segue este protocolo, ele deve conseguir conversar com o servidor de qualquer colega (e vice-versa), mesmo que o servidor dele esteja em outra linguagem/framework completamente diferente da sua.
+
+## O que é este protocolo
+
+O arquivo [`protocolo-cliente-servidor.yaml`](./protocolo-cliente-servidor.yaml) é uma especificação **OpenAPI 3.0.3** (também conhecida como "Swagger"). Ele descreve, de forma neutra a qualquer linguagem:
+
+- quais **rotas** (endpoints) existem;
+- qual **método HTTP** cada uma usa (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`);
+- o formato exato do **corpo da requisição** (JSON) que cada rota espera;
+- o formato exato da **resposta** (JSON) que cada rota devolve;
+- quais **códigos de status HTTP** (200, 201, 400, 401, 404, 409...) cada rota pode retornar e em qual situação;
+- as **restrições de validação** de cada campo (tamanho mínimo/máximo, formato, caracteres permitidos);
+- como funciona a **autenticação** (token Bearer).
+
+Não importa se seu servidor é feito em Node, Java, Python, C#, Go, PHP etc. — desde que ele implemente essas rotas exatamente como descritas aqui, qualquer cliente de colega (também implementado a partir deste protocolo) deve conseguir usá-lo.
+
+### Por que isso importa
+
+Como não podemos nos ajudar diretamente no código, este arquivo é o **único contrato** que garante que todo mundo vai conseguir se comunicar no dia da integração. Qualquer ambiguidade ou divergência de interpretação aqui vira um bug de interoperabilidade lá na frente — por isso o protocolo precisa ser lido com atenção e qualquer dúvida/sugestão deve virar uma issue ou PR (veja mais abaixo).
+
+## Escopo desta versão (1ª entrega)
+
+Esta versão cobre apenas o necessário para a primeira entrega parcial:
+
+| Funcionalidade | Rota | Método |
+|---|---|---|
+| Login | `/auth/login` | `POST` |
+| Logout | `/auth/logout` | `POST` |
+| Criar usuário (cadastro) | `/users` | `POST` |
+| Buscar dados do usuário autenticado | `/users/me` | `GET` |
+| Atualizar usuário autenticado (todos os campos) | `/users/me` | `PUT` |
+| Atualizar usuário autenticado (campos parciais) | `/users/me` | `PATCH` |
+| Remover usuário autenticado | `/users/me` | `DELETE` |
+
+Listagem de todos os usuários (`GET /users`, funcionalidade de admin) está deliberadamente comentada no YAML — não faz parte desta entrega, mas o esqueleto já ficou no arquivo pra facilitar quando for a vez dela.
+
+## Como a autenticação funciona
+
+1. O cliente envia `email` e `senha` para `POST /auth/login`.
+2. Se as credenciais baterem, o servidor responde com um **token** (JWT) e os dados do usuário.
+3. Esse token deve ser enviado em toda requisição que exige autenticação, no header:
+   ```
+   Authorization: Bearer <token>
+   ```
+4. As rotas `/users/me` (GET, PUT, PATCH, DELETE) e `/auth/logout` **identificam o usuário só pelo token** — não existe mais um `{id}` na URL. O servidor é responsável por descobrir, a partir do token recebido, de qual usuário se trata.
+5. `POST /auth/logout` invalida o token atual (o servidor deve removê-lo de uma "whitelist" de tokens válidos, ou colocá-lo numa "blacklist"). Depois do logout, aquele token não pode mais ser usado em nenhuma rota, exceto `/auth/login` e `POST /users`.
+
+> **Importante:** o `id` do usuário continua existindo — é a chave única dele no banco de dados, e volta nas respostas (login, cadastro, GET). Ele só não é mais usado como parâmetro de rota. Quem identifica a sessão é sempre o token.
+
+## Regras de validação de dados
+
+Estas regras estão embutidas no schema do YAML (`Email` e `Senha`, em `components/schemas`) e devem ser respeitadas por todos os servidores:
+
+**E-mail**
+- Precisa conter `@` e um domínio válido;
+- Entre 5 e 30 caracteres.
+
+**Senha**
+- Entre 6 e 20 caracteres;
+- Alfanumérica (letras maiúsculas/minúsculas e números);
+- **Não pode** conter caracteres especiais.
+
+Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request`.
+
+## Códigos de resposta esperados (resumo)
+
+| Código | Quando acontece |
+|---|---|
+| `200 OK` | Operação de leitura/atualização concluída com sucesso |
+| `201 Created` | Usuário criado com sucesso |
+| `204 No Content` | Logout ou remoção concluídos, sem corpo de resposta |
+| `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
+| `401 Unauthorized` | Token ausente, inválido, expirado ou já invalidado por logout |
+| `409 Conflict` | Tentativa de cadastro com e-mail já existente |
+
+## Estrutura dos dados (schemas)
+
+- **`LoginRequest`** — `{ email, senha }`
+- **`LoginResponse`** — `{ token, usuario: UserResponse }`
+- **`UserRequest`** — `{ nome, email, senha }` (usado no cadastro e no PUT)
+- **`UserPatchRequest`** — mesmos campos, todos opcionais (usado no PATCH)
+- **`UserResponse`** — `{ id, nome, email }` (nunca inclui a senha)
+
+Consulte o YAML diretamente para ver os exemplos completos de cada campo — ele pode ser aberto em qualquer editor com suporte a OpenAPI (VS Code com extensão, [Swagger Editor](https://editor.swagger.io/), Insomnia, Postman etc.) pra visualizar de forma mais amigável.
+
+## Como visualizar o protocolo de forma mais legível
+
+Copie o conteúdo de `protocolo-cliente-servidor.yaml` e cole em https://editor.swagger.io/ — ele renderiza a documentação interativa, com exemplos de request/response prontos pra testar.
+
+## Como contribuir (fork + pull request)
+
+Este protocolo é um contrato **compartilhado por toda a turma**. Se você encontrar algo ambíguo, incompleto, ou que impede a interoperabilidade entre implementações, siga este fluxo:
+
+1. **Abra uma issue primeiro**, descrevendo o problema ou a sugestão. Como qualquer mudança no protocolo afeta todo mundo, é importante alinhar antes de sair editando.
+2. **Faça um fork** deste repositório (botão "Fork" no canto superior direito da página do GitHub).
+3. **Clone o seu fork** localmente:
+   ```bash
+   git clone https://github.com/<seu-usuario>/protocolo-cliente-servidor.git
+   cd protocolo-cliente-servidor
+   ```
+4. **Crie uma branch** para sua alteração:
+   ```bash
+   git checkout -b minha-alteracao
+   ```
+5. **Edite o `protocolo-cliente-servidor.yaml`** com a mudança proposta.
+6. **Commite e envie para o seu fork:**
+   ```bash
+   git add .
+   git commit -m "descreva a alteração aqui"
+   git push origin minha-alteracao
+   ```
+7. **Abra um Pull Request** do seu fork para a branch `main` deste repositório (o próprio GitHub sugere isso assim que você faz o push). Descreva no PR o que mudou e por quê.
+8. Aguarde revisão — como o protocolo é compartilhado, o ideal é que a mudança seja discutida/aprovada antes do merge.
+
+Se você só quer **manter uma cópia própria** do protocolo (sem necessariamente contribuir de volta), o fork sozinho já resolve — ele fica salvo na sua conta do GitHub e você pode sincronizar com o repositório original quando quiser, usando o botão "Sync fork" ou:
+```bash
+git remote add upstream https://github.com/JoseMarra2006/protocolo-cliente-servidor.git
+git fetch upstream
+git merge upstream/main
+```
+
+## Versionamento
+
+O campo `version` no topo do YAML (`info.version`) é incrementado a cada mudança relevante no protocolo. Fique de olho nele — se você já implementou algo baseado numa versão anterior, um PR aceito pode exigir ajustes no seu cliente/servidor.
