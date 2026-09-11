@@ -5,24 +5,16 @@ info:
     Modelo do protocolo REST/HTTP para autenticação (login/logout) e CRUD de usuários,
     para uso no trabalho prático da disciplina.
     Padroniza rotas, cabeçalhos, corpo de requisição (JSON) e respostas.
-
-    Revisão para a 1ª entrega parcial (login, logout e CRUD de usuários):
-    - As operações de leitura/atualização/remoção do próprio usuário passaram a usar
-      o recurso "/users/me", identificando o usuário exclusivamente pelo token Bearer
-      (conforme requisito: "recebe um identificador único (token) e identifica o usuário"),
-      em vez de um "{id}" na URL. Isso evita que um cliente informe o id de outro usuário.
-    - Foram adicionadas as restrições de dado (não funcionais) de e-mail e senha
-      diretamente nos schemas, para que todas as implementações validem igual.
-  version: 1.1.0
+  version: 1.2.0
 servers:
   - url: http://localhost:8080/api/v1
     description: Servidor de Desenvolvimento Local
 
 paths:
-  /auth/login:
+  /sessions:
     post:
-      summary: Autenticar usuário
-      description: Valida credenciais e retorna um token de acesso.
+      summary: Criar sessão (login)
+      description: Valida as credenciais e cria uma nova sessão, retornando o id da sessão e o token de acesso.
       requestBody:
         required: true
         content:
@@ -30,25 +22,36 @@ paths:
             schema:
               $ref: '#/components/schemas/LoginRequest'
       responses:
-        '200':
-          description: Autenticação realizada com sucesso.
+        '201':
+          description: Sessão criada com sucesso.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
+                $ref: '#/components/schemas/SessionResponse'
         '400':
           description: Requisição inválida ou corpo mal formatado.
         '401':
           description: Credenciais inválidas.
 
-  /auth/logout:
-    post:
-      summary: Encerrar sessão do usuário
+  /sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: Identificador único da sessão (distinto do token JWT).
+        required: true
+        schema:
+          type: string
+          example: "9f1c2e3a-4b5d-4a6f-8c7e-1a2b3c4d5e6f"
+
+    delete:
+      summary: Encerrar sessão (logout)
       description: |-
-        Invalida o token de acesso atual do usuário autenticado, removendo-o da
-        "whitelist" de tokens ativos (ou incluindo-o em uma "blacklist"). Após o
-        logout, o token não deve dar acesso a nenhuma rota além de /auth/login e
-        POST /users (criação de usuário).
+        Invalida a sessão identificada pelo id informado, removendo-a da
+        "whitelist" de sessões ativas (ou incluindo-a em uma "blacklist").
+        O id da URL deve pertencer ao dono do token enviado no header
+        Authorization; caso contrário, a exclusão é negada.
+        Após o logout, o token não deve dar acesso a nenhuma rota além de
+        POST /sessions e POST /users.
       security:
         - bearerAuth: []
       responses:
@@ -56,6 +59,10 @@ paths:
           description: Logout realizado com sucesso, sem conteúdo de retorno.
         '401':
           description: Token ausente, inválido ou expirado.
+        '403':
+          description: O id da sessão não pertence ao dono do token enviado.
+        '404':
+          description: Sessão não encontrada.
 
   /users:
     #esta função será usada nas funcionalidades de Admin, portanto, não é necessário para a primeira entrega;
@@ -107,12 +114,22 @@ paths:
         '409':
           description: E-mail já cadastrado.
 
-  /users/me:
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: Identificador único do usuário
+        required: true
+        schema:
+          type: integer
+          example: 1
+
     get:
-      summary: Buscar dados do usuário autenticado
+      summary: Buscar usuário por ID
       description: |-
-        Identifica o usuário exclusivamente pelo token Bearer enviado e retorna
-        seus dados.
+        Retorna os dados do usuário identificado pelo id informado. O id da
+        URL deve pertencer ao dono do token enviado no header Authorization;
+        caso contrário, a consulta é negada.
       security:
         - bearerAuth: []
       responses:
@@ -124,11 +141,17 @@ paths:
                 $ref: '#/components/schemas/UserResponse'
         '401':
           description: Token ausente, inválido ou expirado.
+        '403':
+          description: O id do usuário não pertence ao dono do token enviado.
+        '404':
+          description: Usuário não encontrado.
 
     put:
-      summary: Atualizar usuário autenticado
+      summary: Atualizar usuário
       description: |-
-        Atualiza todos os dados do usuário identificado pelo token Bearer enviado.
+        Atualiza todos os dados do usuário identificado pelo id informado. O
+        id da URL deve pertencer ao dono do token enviado no header
+        Authorization; caso contrário, a atualização é negada.
       security:
         - bearerAuth: []
       requestBody:
@@ -148,11 +171,17 @@ paths:
           description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
         '401':
           description: Token ausente, inválido ou expirado.
+        '403':
+          description: O id do usuário não pertence ao dono do token enviado.
+        '404':
+          description: Usuário não encontrado.
 
     patch:
-      summary: Atualizar parcialmente usuário autenticado
+      summary: Atualizar parcialmente usuário
       description: |-
-        Atualiza um ou mais campos do usuário identificado pelo token Bearer enviado.
+        Atualiza um ou mais campos do usuário identificado pelo id informado.
+        O id da URL deve pertencer ao dono do token enviado no header
+        Authorization; caso contrário, a atualização é negada.
       security:
         - bearerAuth: []
       requestBody:
@@ -172,14 +201,17 @@ paths:
           description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
         '401':
           description: Token ausente, inválido ou expirado.
+        '403':
+          description: O id do usuário não pertence ao dono do token enviado.
+        '404':
+          description: Usuário não encontrado.
 
     delete:
-      summary: Remover usuário autenticado
+      summary: Remover usuário
       description: |-
-        Exclui o usuário identificado pelo token Bearer enviado. A confirmação da
-        exclusão junto ao usuário (sim/não) é responsabilidade do cliente antes de
-        chamar esta rota: se a resposta do usuário for negativa, o cliente não deve
-        efetuar a chamada.
+        Exclui o usuário identificado pelo id informado. O id da URL deve
+        pertencer ao dono do token enviado no header Authorization; caso
+        contrário, a exclusão é negada.
       security:
         - bearerAuth: []
       responses:
@@ -187,6 +219,10 @@ paths:
           description: Usuário removido com sucesso, sem conteúdo de retorno.
         '401':
           description: Token ausente, inválido ou expirado.
+        '403':
+          description: O id do usuário não pertence ao dono do token enviado.
+        '404':
+          description: Usuário não encontrado.
 
 components:
   securitySchemes:
@@ -207,9 +243,13 @@ components:
         senha:
           $ref: '#/components/schemas/Senha'
 
-    LoginResponse:
+    SessionResponse:
       type: object
       properties:
+        id:
+          type: string
+          description: Identificador único da sessão, usado em DELETE /sessions/{id} no logout.
+          example: "9f1c2e3a-4b5d-4a6f-8c7e-1a2b3c4d5e6f"
         token:
           type: string
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."

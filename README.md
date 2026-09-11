@@ -28,28 +28,28 @@ Esta versão cobre apenas o necessário para a primeira entrega parcial:
 
 | Funcionalidade | Rota | Método |
 |---|---|---|
-| Login | `/auth/login` | `POST` |
-| Logout | `/auth/logout` | `POST` |
+| Login (criar sessão) | `/sessions` | `POST` |
+| Logout (encerrar sessão) | `/sessions/{id}` | `DELETE` |
 | Criar usuário (cadastro) | `/users` | `POST` |
-| Buscar dados do usuário autenticado | `/users/me` | `GET` |
-| Atualizar usuário autenticado (todos os campos) | `/users/me` | `PUT` |
-| Atualizar usuário autenticado (campos parciais) | `/users/me` | `PATCH` |
-| Remover usuário autenticado | `/users/me` | `DELETE` |
+| Buscar usuário por id | `/users/{id}` | `GET` |
+| Atualizar usuário (todos os campos) | `/users/{id}` | `PUT` |
+| Atualizar usuário (campos parciais) | `/users/{id}` | `PATCH` |
+| Remover usuário | `/users/{id}` | `DELETE` |
+
+Login e logout são modelados como criação/remoção do recurso **sessão** (`/sessions`), em vez de rotas de ação tipo `/auth/login` — isso segue o princípio REST de identificar recursos, não ações (uma URL não deve descrever um verbo).
 
 Listagem de todos os usuários (`GET /users`, funcionalidade de admin) está deliberadamente comentada no YAML — não faz parte desta entrega, mas o esqueleto já ficou no arquivo pra facilitar quando for a vez dela.
 
 ## Como a autenticação funciona
 
-1. O cliente envia `email` e `senha` para `POST /auth/login`.
-2. Se as credenciais baterem, o servidor responde com um **token** (JWT) e os dados do usuário.
-3. Esse token deve ser enviado em toda requisição que exige autenticação, no header:
+1. O cliente envia `email` e `senha` para `POST /sessions`.
+2. Se as credenciais baterem, o servidor cria uma sessão e responde com o **id da sessão**, o **token** (JWT) e os dados do usuário.
+3. O token deve ser enviado em toda requisição que exige autenticação, no header:
    ```
    Authorization: Bearer <token>
    ```
-4. As rotas `/users/me` (GET, PUT, PATCH, DELETE) e `/auth/logout` **identificam o usuário só pelo token** — não existe mais um `{id}` na URL. O servidor é responsável por descobrir, a partir do token recebido, de qual usuário se trata.
-5. `POST /auth/logout` invalida o token atual (o servidor deve removê-lo de uma "whitelist" de tokens válidos, ou colocá-lo numa "blacklist"). Depois do logout, aquele token não pode mais ser usado em nenhuma rota, exceto `/auth/login` e `POST /users`.
-
-> **Importante:** o `id` do usuário continua existindo — é a chave única dele no banco de dados, e volta nas respostas (login, cadastro, GET). Ele só não é mais usado como parâmetro de rota. Quem identifica a sessão é sempre o token.
+4. Nas rotas `/users/{id}` (GET, PUT, PATCH, DELETE), o servidor recebe o `id` do usuário na URL **e** o token no header. Ele precisa checar se aquele `id` pertence ao dono do token — se não pertencer, responde `403 Forbidden`. Isso mantém a URL endereçando o recurso pelo seu id (RESTful), sem abrir brecha pra um usuário mexer no cadastro de outro só trocando o número na URL.
+5. `DELETE /sessions/{id}` faz o logout — `{id}` aqui é o **id da sessão** devolvido no login, não o token inteiro. Mesma regra: o id da sessão na URL precisa pertencer ao dono do token enviado. O servidor deve remover essa sessão de uma "whitelist" de sessões ativas (ou colocá-la numa "blacklist"). Depois do logout, o token daquela sessão não pode mais ser usado em nenhuma rota, exceto `POST /sessions` e `POST /users`.
 
 ## Regras de validação de dados
 
@@ -75,12 +75,14 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | `204 No Content` | Logout ou remoção concluídos, sem corpo de resposta |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
 | `401 Unauthorized` | Token ausente, inválido, expirado ou já invalidado por logout |
+| `403 Forbidden` | O `id` na URL (usuário ou sessão) não pertence ao dono do token enviado |
+| `404 Not Found` | Usuário ou sessão com o `id` informado não existe |
 | `409 Conflict` | Tentativa de cadastro com e-mail já existente |
 
 ## Estrutura dos dados (schemas)
 
 - **`LoginRequest`** — `{ email, senha }`
-- **`LoginResponse`** — `{ token, usuario: UserResponse }`
+- **`SessionResponse`** — `{ id, token, usuario: UserResponse }` (`id` é o id da sessão, usado no `DELETE /sessions/{id}`)
 - **`UserRequest`** — `{ nome, email, senha }` (usado no cadastro e no PUT)
 - **`UserPatchRequest`** — mesmos campos, todos opcionais (usado no PATCH)
 - **`UserResponse`** — `{ id, nome, email }` (nunca inclui a senha)
