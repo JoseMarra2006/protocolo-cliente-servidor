@@ -91,7 +91,8 @@ Consulte o YAML diretamente para ver os exemplos completos de cada campo — ele
 
 ## Como visualizar o protocolo de forma mais legível
 
-Copie o conteúdo de `protocolo-cliente-servidor.yaml` e cole em https://editor.swagger.io/ — ele renderiza a documentação interativa, com exemplos de request/response prontos pra testar.
+- **Documentação publicada:** https://josemarra2006.github.io/protocolo-cliente-servidor/ (gerada pela pasta [`docs/`](./docs), veja detalhes lá)
+- **Ou manualmente:** copie o conteúdo de `protocolo-cliente-servidor.yaml` e cole em https://editor.swagger.io/
 
 ## Como contribuir (fork + pull request)
 
