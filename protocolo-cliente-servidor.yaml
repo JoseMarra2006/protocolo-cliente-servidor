@@ -58,7 +58,7 @@ paths:
         '204':
           description: Logout realizado com sucesso, sem conteúdo de retorno.
         '401':
-          description: Token ausente, inválido ou expirado.
+          description: Token ausente ou inválido.
         '403':
           description: O id da sessão não pertence ao dono do token enviado.
         '404':
@@ -88,7 +88,7 @@ paths:
     #             items:
     #               $ref: '#/components/schemas/UserResponse'
     #     '401':
-    #       description: Token ausente, inválido ou expirado.
+    #       description: Token ausente ou inválido.
 
     post:
       summary: Criar um novo usuário
@@ -140,7 +140,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserResponse'
         '401':
-          description: Token ausente, inválido ou expirado.
+          description: Token ausente ou inválido.
         '403':
           description: O id do usuário não pertence ao dono do token enviado.
         '404':
@@ -170,7 +170,7 @@ paths:
         '400':
           description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
         '401':
-          description: Token ausente, inválido ou expirado.
+          description: Token ausente ou inválido.
         '403':
           description: O id do usuário não pertence ao dono do token enviado.
         '404':
@@ -200,7 +200,7 @@ paths:
         '400':
           description: Requisição inválida ou corpo mal formatado (viola alguma restrição de dado).
         '401':
-          description: Token ausente, inválido ou expirado.
+          description: Token ausente ou inválido.
         '403':
           description: O id do usuário não pertence ao dono do token enviado.
         '404':
@@ -218,7 +218,7 @@ paths:
         '204':
           description: Usuário removido com sucesso, sem conteúdo de retorno.
         '401':
-          description: Token ausente, inválido ou expirado.
+          description: Token ausente ou inválido.
         '403':
           description: O id do usuário não pertence ao dono do token enviado.
         '404':

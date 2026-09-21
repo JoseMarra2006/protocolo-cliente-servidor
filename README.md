@@ -74,7 +74,7 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | `201 Created` | Usuário criado com sucesso |
 | `204 No Content` | Logout ou remoção concluídos, sem corpo de resposta |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
-| `401 Unauthorized` | Token ausente, inválido, expirado ou já invalidado por logout |
+| `401 Unauthorized` | Token ausente, inválido ou já invalidado por logout |
 | `403 Forbidden` | O `id` na URL (usuário ou sessão) não pertence ao dono do token enviado |
 | `404 Not Found` | Usuário ou sessão com o `id` informado não existe |
 | `409 Conflict` | Tentativa de cadastro com e-mail já existente |
