@@ -4,6 +4,12 @@ Este repositório contém o **protocolo de comunicação compartilhado** usado n
 
 Se o seu cliente segue este protocolo, ele deve conseguir conversar com o servidor de qualquer colega (e vice-versa), mesmo que o servidor dele esteja em outra linguagem/framework completamente diferente da sua.
 
+## Documentação publicada (GitHub Pages)
+
+**https://josemarra2006.github.io/protocolo-cliente-servidor/**
+
+Página interativa (Swagger UI), gerada a partir da pasta [`docs/`](./docs). Ela busca o `protocolo-cliente-servidor.yaml` direto do repositório, então qualquer push na `main` que altere o arquivo atualiza a documentação automaticamente.
+
 ## O que é este protocolo
 
 O arquivo [`protocolo-cliente-servidor.yaml`](./protocolo-cliente-servidor.yaml) é uma especificação **OpenAPI 3.0.3** (também conhecida como "Swagger"). Ele descreve, de forma neutra a qualquer linguagem:
@@ -91,8 +97,7 @@ Consulte o YAML diretamente para ver os exemplos completos de cada campo — ele
 
 ## Como visualizar o protocolo de forma mais legível
 
-- **Documentação publicada:** https://josemarra2006.github.io/protocolo-cliente-servidor/ (gerada pela pasta [`docs/`](./docs), veja detalhes lá)
-- **Ou manualmente:** copie o conteúdo de `protocolo-cliente-servidor.yaml` e cole em https://editor.swagger.io/
+Além da documentação publicada (link no topo deste README), dá pra copiar o conteúdo de `protocolo-cliente-servidor.yaml` e colar em https://editor.swagger.io/ pra visualizar sem depender do link publicado.
 
 ## Como contribuir (fork + pull request)
 
