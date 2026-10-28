@@ -28,23 +28,35 @@ Não importa se seu servidor é feito em Node, Java, Python, C#, Go, PHP etc. �
 
 Como não podemos nos ajudar diretamente no código, este arquivo é o **único contrato** que garante que todo mundo vai conseguir se comunicar no dia da integração. Qualquer ambiguidade ou divergência de interpretação aqui vira um bug de interoperabilidade lá na frente — por isso o protocolo precisa ser lido com atenção e qualquer dúvida/sugestão deve virar uma issue ou PR (veja mais abaixo).
 
-## Escopo desta versão (1ª entrega)
+## Escopo desta versão (1ª e 2ª entregas)
 
-Esta versão cobre apenas o necessário para a primeira entrega parcial:
+| Funcionalidade | Rota | Método | Quem pode |
+|---|---|---|---|
+| Login (criar sessão) | `/sessions` | `POST` | público |
+| Logout (encerrar sessão) | `/sessions/{id}` | `DELETE` | dono da sessão |
+| Criar usuário (cadastro) | `/users` | `POST` | público |
+| Listar todos os usuários | `/users` | `GET` | ADM |
+| Buscar usuário por id | `/users/{id}` | `GET` | dono ou ADM |
+| Atualizar usuário (todos os campos) | `/users/{id}` | `PUT` | dono ou ADM |
+| Atualizar usuário (campos parciais) | `/users/{id}` | `PATCH` | dono ou ADM |
+| Remover usuário | `/users/{id}` | `DELETE` | dono ou ADM |
+| Listar produtos (com estoque) | `/products` | `GET` | qualquer usuário logado |
+| Cadastrar produto | `/products` | `POST` | ADM |
+| Buscar produto por id (consultar estoque) | `/products/{id}` | `GET` | qualquer usuário logado |
+| Atualizar produto (todos os campos) | `/products/{id}` | `PUT` | ADM |
+| Atualizar produto (campos parciais) | `/products/{id}` | `PATCH` | ADM |
+| Remover produto | `/products/{id}` | `DELETE` | ADM |
 
-| Funcionalidade | Rota | Método |
-|---|---|---|
-| Login (criar sessão) | `/sessions` | `POST` |
-| Logout (encerrar sessão) | `/sessions/{id}` | `DELETE` |
-| Criar usuário (cadastro) | `/users` | `POST` |
-| Buscar usuário por id | `/users/{id}` | `GET` |
-| Atualizar usuário (todos os campos) | `/users/{id}` | `PUT` |
-| Atualizar usuário (campos parciais) | `/users/{id}` | `PATCH` |
-| Remover usuário | `/users/{id}` | `DELETE` |
+Login e logout são modelados como criação/remoção do recurso **sessão** (`/sessions`), em vez de rotas de ação tipo `/auth/login` — isso segue o princípio REST de identificar recursos, não ações (uma URL não deve descrever um verbo). Pelo mesmo motivo, consultar o estoque não tem rota própria: a quantidade em estoque é um campo do recurso **produto**, lido com `GET /products/{id}`.
 
-Login e logout são modelados como criação/remoção do recurso **sessão** (`/sessions`), em vez de rotas de ação tipo `/auth/login` — isso segue o princípio REST de identificar recursos, não ações (uma URL não deve descrever um verbo).
+## Papéis de usuário (comum e ADM)
 
-Listagem de todos os usuários (`GET /users`, funcionalidade de admin) está deliberadamente comentada no YAML — não faz parte desta entrega, mas o esqueleto já ficou no arquivo pra facilitar quando for a vez dela.
+Todo usuário tem o campo `admin` (booleano) em `UserResponse`, inclusive no `usuario` devolvido pelo login — é por ele que o cliente decide se mostra as telas de administração.
+
+- **Como alguém vira ADM fica fora do protocolo.** Cada servidor cria os seus ADMs como preferir (seed, script, direto no banco). `POST /users` sempre cria usuário comum, e nenhuma rota altera o papel: um campo `admin` enviado em `POST`, `PUT` ou `PATCH` de `/users` é ignorado (regra 7).
+- **ADM** pode listar, ler, atualizar e remover **qualquer** usuário (inclusive outro ADM ou a si mesmo) e é o único que cadastra, atualiza e remove produtos.
+- **Usuário comum** só mexe no próprio cadastro e só lê produtos.
+- Sessões continuam sendo só do dono: nem o ADM encerra a sessão de outra pessoa com `DELETE /sessions/{id}`. Remover um usuário encerra todas as sessões dele.
 
 ## Como a autenticação funciona
 
@@ -54,7 +66,7 @@ Listagem de todos os usuários (`GET /users`, funcionalidade de admin) está del
    ```
    Authorization: Bearer <token>
    ```
-4. Nas rotas `/users/{id}` (GET, PUT, PATCH, DELETE), o servidor recebe o `id` do usuário na URL **e** o token no header. Ele precisa checar se aquele `id` pertence ao dono do token — se não pertencer, responde `403 Forbidden`. Isso mantém a URL endereçando o recurso pelo seu id (RESTful), sem abrir brecha pra um usuário mexer no cadastro de outro só trocando o número na URL.
+4. Nas rotas `/users/{id}` (GET, PUT, PATCH, DELETE), o servidor recebe o `id` do usuário na URL **e** o token no header. Ele precisa checar se aquele `id` pertence ao dono do token — se não pertencer **e o dono do token não for ADM**, responde `403 Forbidden`. Isso mantém a URL endereçando o recurso pelo seu id (RESTful), sem abrir brecha pra um usuário mexer no cadastro de outro só trocando o número na URL.
 5. `DELETE /sessions/{id}` faz o logout — `{id}` aqui é o **id da sessão** devolvido no login, não o token inteiro. Mesma regra: o id da sessão na URL precisa pertencer ao dono do token enviado. O servidor deve remover essa sessão de uma "whitelist" de sessões ativas (ou colocá-la numa "blacklist"). Depois do logout, o token daquela sessão não pode mais ser usado em nenhuma rota, exceto `POST /sessions` e `POST /users`.
 
 ## Regras gerais do protocolo
@@ -69,17 +81,18 @@ Valem pra todo cliente e servidor, em qualquer linguagem:
 6. **Erros** — sempre corpo JSON no formato `ErroResponse`: `{"mensagem": "texto"}`. Se a resposta não vier nesse formato, o cliente deve mostrar algo genérico baseado no status, sem travar.
 7. **Tolerância a campos** — servidor ignora campo desconhecido no JSON recebido; cliente ignora campo extra na resposta. Um `id` enviado no corpo de PUT/PATCH é ignorado — vale sempre o `id` da URL.
 8. **E-mail** — comparação (duplicidade, login) ignora maiúscula/minúscula.
-9. **Nome** — servidor faz trim (remove espaços nas pontas) antes de validar e salvar.
-10. **Ordem de validação** em `/users/{id}` e `/sessions/{id}` — quando há mais de um problema, o servidor responde com o primeiro nesta ordem: `401` (token) → `400` (id da URL mal formatado) → `403` (id não é do dono do token) → `404` (não existe) → `400` (corpo inválido) → `409` (e-mail duplicado). Como o `403` vem antes do `404`, um id de outro usuário — exista ou não — sempre dá `403`.
+9. **Nome e descrição** — servidor faz trim (remove espaços nas pontas) antes de validar e salvar. Vale para o `nome` do usuário e para o `nome` e a `descricao` do produto.
+10. **Ordem de validação** em todas as rotas protegidas — quando há mais de um problema, o servidor responde com o primeiro nesta ordem: `401` (token) → `400` (id da URL mal formatado) → `403` (sem permissão) → `404` (não existe) → `400` (corpo inválido) → `409` (e-mail duplicado). Cada rota só usa os códigos que lista no YAML. "Sem permissão" é: em `/users/{id}`, o id não é do dono do token e ele não é ADM; em `/sessions/{id}`, a sessão não é do dono do token; em `GET /users` e nas escritas de `/products`, o dono do token não é ADM. Como o `403` vem antes do `404`, um usuário comum que tenta mexer num id de outro usuário ou editar um produto — exista ou não — sempre recebe `403`. Para o ADM, um id que não existe dá `404`.
 11. **Senha** — nunca volta em nenhuma resposta.
 12. **Erro interno** — falha inesperada do servidor é `500` com corpo `ErroResponse`.
 13. **Tipos e null** — todo campo deve ter o tipo certo (texto é string JSON); campo com tipo errado ou `null` dá `400`. Servidor não converte tipo. No PATCH, campo que não deve mudar simplesmente não é enviado.
 14. **Múltiplas sessões** — cada login bem-sucedido cria uma sessão nova e independente (id e token próprios), mesmo que o usuário já tenha outra ativa. `DELETE /sessions/{id}` encerra só aquela sessão.
 15. **Rota/método inexistente** — rota que não existe dá `404`; método não suportado numa rota que existe dá `405`. Ambos com corpo `ErroResponse` e cabeçalhos CORS.
+16. **Listas** — `GET /users` e `GET /products` devolvem um array JSON (vazio quando não há registros), ordenado por `id` crescente, sem paginação nem filtros.
 
 ## Regras de validação de dados
 
-Estas regras estão embutidas no schema do YAML (`Email` e `Senha`, em `components/schemas`) e devem ser respeitadas por todos os servidores:
+Estas regras estão embutidas no schema do YAML (`Email`, `Senha`, `Nome`, `NomeProduto`, `Descricao` e `Quantidade`, em `components/schemas`) e devem ser respeitadas por todos os servidores:
 
 **E-mail**
 - Precisa conter `@` e um domínio válido;
@@ -90,6 +103,18 @@ Estas regras estão embutidas no schema do YAML (`Email` e `Senha`, em `componen
 - Alfanumérica (letras maiúsculas/minúsculas e números);
 - **Não pode** conter caracteres especiais.
 
+**Nome do produto**
+- Entre 2 e 100 caracteres, depois do trim;
+- Nomes repetidos são permitidos (o produto é identificado pelo `id`).
+
+**Descrição do produto**
+- Até 500 caracteres, depois do trim;
+- Pode ser vazia (`""`), mas o campo precisa vir no `POST` e no `PUT`.
+
+**Quantidade em estoque**
+- Número inteiro JSON entre 0 e 1.000.000;
+- Decimal (`1.5`), negativo ou texto (`"10"`) dá `400`.
+
 Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request`.
 
 ## Códigos de resposta esperados (resumo)
@@ -97,12 +122,12 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | Código | Quando acontece |
 |---|---|
 | `200 OK` | Operação de leitura/atualização concluída com sucesso |
-| `201 Created` | Usuário criado com sucesso |
-| `204 No Content` | Logout ou remoção concluídos, sem corpo de resposta |
+| `201 Created` | Usuário, sessão ou produto criado com sucesso |
+| `204 No Content` | Logout ou remoção (de usuário ou produto) concluídos, sem corpo de resposta |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
 | `401 Unauthorized` | Token ausente, inválido ou já invalidado por logout |
-| `403 Forbidden` | O `id` na URL (usuário ou sessão) não pertence ao dono do token enviado |
-| `404 Not Found` | Usuário/sessão com o `id` informado não existe, ou a rota não existe |
+| `403 Forbidden` | Sem permissão: o `id` na URL (usuário ou sessão) não pertence ao dono do token e ele não é ADM, ou a rota é exclusiva de ADM |
+| `404 Not Found` | Usuário/sessão/produto com o `id` informado não existe, ou a rota não existe |
 | `405 Method Not Allowed` | Método HTTP não suportado numa rota que existe |
 | `409 Conflict` | E-mail já cadastrado (por outro usuário, no cadastro ou no PUT/PATCH) |
 | `500 Internal Server Error` | Falha inesperada no servidor |
@@ -113,9 +138,15 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 - **`SessionResponse`** — `{ id, token, usuario: UserResponse }`, todos obrigatórios (`id` é o id da sessão, usado no `DELETE /sessions/{id}`)
 - **`UserRequest`** — `{ nome, email, senha }` (usado no cadastro e no PUT, todos obrigatórios)
 - **`UserPatchRequest`** — mesmos campos, todos opcionais, mas pelo menos um precisa vir (usado no PATCH)
-- **`UserResponse`** — `{ id, nome, email }`, todos obrigatórios (nunca inclui a senha)
+- **`UserResponse`** — `{ id, nome, email, admin }`, todos obrigatórios (nunca inclui a senha)
+- **`ProductRequest`** — `{ nome, descricao, quantidade }` (usado no cadastro e no PUT de produto, todos obrigatórios)
+- **`ProductPatchRequest`** — mesmos campos, todos opcionais, mas pelo menos um precisa vir (usado no PATCH de produto)
+- **`ProductResponse`** — `{ id, nome, descricao, quantidade }`, todos obrigatórios
 - **`ErroResponse`** — `{ mensagem }` (corpo padrão de toda resposta de erro)
 - **`Nome`** — string de 3 a 50 caracteres, já com trim aplicado
+- **`NomeProduto`** — string de 2 a 100 caracteres, já com trim aplicado
+- **`Descricao`** — string de até 500 caracteres (pode ser vazia), já com trim aplicado
+- **`Quantidade`** — inteiro de 0 a 1.000.000
 
 Consulte o YAML diretamente para ver os exemplos completos de cada campo — ele pode ser aberto em qualquer editor com suporte a OpenAPI (VS Code com extensão, [Swagger Editor](https://editor.swagger.io/), Insomnia, Postman etc.) pra visualizar de forma mais amigável.
 
