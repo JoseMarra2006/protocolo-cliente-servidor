@@ -9,6 +9,11 @@ info:
 
     Regras gerais (autenticação, CORS, formato de erro, ordem de validação, papéis
     de usuário etc.) e histórico de versões estão documentados no README do repositório.
+
+    Todo servidor possui o mesmo ADM padrão (nome "Admin", e-mail
+    "adm@teste.com", senha "admin123"), criado automaticamente na
+    inicialização se ainda não existir. Detalhes na seção "ADM padrão" do
+    README.
   version: 1.4.0
 servers:
   - url: http://{ip}:{porta}/api/v1
@@ -170,8 +175,10 @@ paths:
         o servidor deve responder 409 e o cliente deve orientar o usuário a
         fazer login em vez de se cadastrar novamente.
         Sempre cria um usuário comum ("admin": false). Um campo "admin"
-        enviado no corpo é ignorado (regra 7): como cada servidor cria seus
-        ADMs fica fora do protocolo.
+        enviado no corpo é ignorado (regra 7). Nenhuma rota cria ADM: o ADM
+        padrão é criado pelo próprio servidor na inicialização (ver seção
+        "ADM padrão" do README). O e-mail do ADM padrão ("adm@teste.com")
+        também dá 409, como qualquer e-mail já cadastrado.
       security: []
       requestBody:
         required: true
@@ -392,6 +399,8 @@ paths:
         A exclusão derruba da whitelist todas as sessões desse usuário —
         depois disso, qualquer requisição com esses tokens dá 401. Confirmar
         com o usuário antes de chamar essa rota é responsabilidade do cliente.
+        Vale também para o ADM padrão, que não tem proteção especial (ver
+        seção "ADM padrão" do README).
       security:
         - bearerAuth: []
       responses:
@@ -819,7 +828,7 @@ components:
           example: "aluno_joao@exemplo.com"
         admin:
           type: boolean
-          description: true se o usuário é ADM. Só leitura — não é alterado por nenhuma rota.
+          description: true se o usuário é ADM. Só leitura — não é alterado por nenhuma rota. Clientes decidem as telas de administração por este campo, nunca pelo e-mail nem pelo id.
           example: false
 
     ProductRequest:
