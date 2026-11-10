@@ -53,10 +53,30 @@ Login e logout são modelados como criação/remoção do recurso **sessão** (`
 
 Todo usuário tem o campo `admin` (booleano) em `UserResponse`, inclusive no `usuario` devolvido pelo login — é por ele que o cliente decide se mostra as telas de administração.
 
-- **Como alguém vira ADM fica fora do protocolo.** Cada servidor cria os seus ADMs como preferir (seed, script, direto no banco). `POST /users` sempre cria usuário comum, e nenhuma rota altera o papel: um campo `admin` enviado em `POST`, `PUT` ou `PATCH` de `/users` é ignorado (regra 7).
+- **Como alguém vira ADM é definido pelo protocolo:** existe um **ADM padrão**, descrito na subseção abaixo, que todo servidor cria sozinho. `POST /users` sempre cria usuário comum, e nenhuma rota altera o papel: um campo `admin` enviado em `POST`, `PUT` ou `PATCH` de `/users` é ignorado (regra 7).
 - **ADM** pode listar, ler, atualizar e remover **qualquer** usuário (inclusive outro ADM ou a si mesmo) e é o único que cadastra, atualiza e remove produtos.
 - **Usuário comum** só mexe no próprio cadastro e só lê produtos.
 - Sessões continuam sendo só do dono: nem o ADM encerra a sessão de outra pessoa com `DELETE /sessions/{id}`. Remover um usuário encerra todas as sessões dele.
+
+### ADM padrão
+
+Para que qualquer cliente consiga usar as funções de administração em qualquer servidor, todos os servidores têm o **mesmo** ADM, com estas credenciais fixas:
+
+| Campo | Valor |
+|---|---|
+| `nome` | `Admin` |
+| `email` | `adm@teste.com` |
+| `senha` | `admin123` |
+
+Essas credenciais já respeitam as restrições de dados do protocolo (nome de 3 a 50 caracteres, e-mail de 5 a 30 caracteres com `@` e domínio, senha alfanumérica de 6 a 20 caracteres). Regras:
+
+1. **Criação automática** — a cada inicialização, o servidor verifica se existe um usuário com o e-mail `adm@teste.com` (comparação sem diferenciar maiúscula/minúscula, regra 8). Se não existir, cria esse usuário com `admin: true`, com o nome e a senha da tabela. Se já existir, não altera nada. Isso vale tanto para banco novo quanto para banco já existente.
+2. **Sem outra forma de criar ADM** — nenhuma rota cria ou promove ADM. O único mecanismo que cria ADM é a verificação da regra 1.
+3. **Mesmas regras dos demais usuários** — o ADM padrão pode ser lido, atualizado e removido pelas mesmas rotas de `/users/{id}`, sem proteção especial. Como a criação é verificada a cada inicialização, se o e-mail padrão deixar de existir (por remoção ou por troca de e-mail), a próxima inicialização do servidor cria o ADM padrão de novo.
+4. **Combinado para a avaliação** — para não quebrar o acesso padronizado dos outros clientes, ninguém deve alterar nem remover o ADM padrão durante a avaliação.
+5. **Clientes** — decidem se mostram as telas de administração apenas pelo campo `admin` do usuário devolvido no login (`usuario.admin`), nunca pelo e-mail nem pelo `id`, que não é fixo e varia de servidor para servidor. Se a resposta de algum servidor vier sem o campo `admin`, o cliente deve tratá-lo como `false`.
+6. **Cadastro com o e-mail padrão** — `POST /users` com `adm@teste.com` recebe `409`, como qualquer e-mail já cadastrado (a comparação ignora maiúscula/minúscula, regra 8).
+7. **Implementação livre** — como o servidor guarda a senha e cria o usuário internamente é decisão de cada um; o protocolo exige apenas o comportamento descrito. As credenciais são públicas e valem somente para o ambiente da disciplina.
 
 ## Como a autenticação funciona
 
