@@ -102,7 +102,7 @@ Valem pra todo cliente e servidor, em qualquer linguagem:
 7. **Tolerância a campos** — servidor ignora campo desconhecido no JSON recebido; cliente ignora campo extra na resposta. Um `id` enviado no corpo de PUT/PATCH é ignorado — vale sempre o `id` da URL.
 8. **E-mail** — comparação (duplicidade, login) ignora maiúscula/minúscula.
 9. **Nome e descrição** — servidor faz trim (remove espaços nas pontas) antes de validar e salvar. Vale para o `nome` do usuário e para o `nome` e a `descricao` do produto.
-10. **Ordem de validação** em todas as rotas protegidas — quando há mais de um problema, o servidor responde com o primeiro nesta ordem: `401` (token) → `400` (id da URL mal formatado) → `403` (sem permissão) → `404` (não existe) → `400` (corpo inválido) → `409` (e-mail duplicado). Cada rota só usa os códigos que lista no YAML. "Sem permissão" é: em `/users/{id}`, o id não é do dono do token e ele não é ADM; em `/sessions/{id}`, a sessão não é do dono do token; em `GET /users` e nas escritas de `/products`, o dono do token não é ADM. Como o `403` vem antes do `404`, um usuário comum que tenta mexer num id de outro usuário ou editar um produto — exista ou não — sempre recebe `403`. Para o ADM, um id que não existe dá `404`.
+10. **Ordem de validação** em todas as rotas protegidas — quando há mais de um problema, o servidor responde com o primeiro nesta ordem: `401` (token) → `400` (id da URL mal formatado) → `403` (sem permissão) → `404` (não existe) → `400` (corpo inválido) → `409` (e-mail duplicado). Cada rota só usa os códigos que lista no YAML. "Sem permissão" é: em `/users/{id}`, o id não é do dono do token e ele não é ADM; em `/sessions/{id}`, a sessão não é do dono do token; em `GET /users` e nas escritas de `/products`, o dono do token não é ADM. Como o `403` vem antes do `404`, um usuário comum que tenta mexer num id de outro usuário ou editar um produto — exista ou não — sempre recebe `403`. Para o ADM, um id que não existe dá `404`, exceto em `DELETE /sessions/{id}`: uma sessão que não existe também não é do dono do token, então dá sempre `403`, para qualquer usuário, inclusive ADM. Essa rota nunca devolve `404`.
 11. **Senha** — nunca volta em nenhuma resposta.
 12. **Erro interno** — falha inesperada do servidor é `500` com corpo `ErroResponse`.
 13. **Tipos e null** — todo campo deve ter o tipo certo (texto é string JSON); campo com tipo errado ou `null` dá `400`. Servidor não converte tipo. No PATCH, campo que não deve mudar simplesmente não é enviado.
@@ -146,8 +146,8 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | `204 No Content` | Logout ou remoção (de usuário ou produto) concluídos, sem corpo de resposta |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
 | `401 Unauthorized` | Token ausente, inválido ou já invalidado por logout |
-| `403 Forbidden` | Sem permissão: o `id` na URL (usuário ou sessão) não pertence ao dono do token e ele não é ADM, ou a rota é exclusiva de ADM |
-| `404 Not Found` | Usuário/sessão/produto com o `id` informado não existe, ou a rota não existe |
+| `403 Forbidden` | Sem permissão: o `id` de usuário na URL não pertence ao dono do token e ele não é ADM; a sessão na URL não pertence ao dono do token (inclusive quando não existe, mesmo para ADM); ou a rota é exclusiva de ADM |
+| `404 Not Found` | Usuário ou produto com o `id` informado não existe, ou a rota não existe |
 | `405 Method Not Allowed` | Método HTTP não suportado numa rota que existe |
 | `409 Conflict` | E-mail já cadastrado (por outro usuário, no cadastro ou no PUT/PATCH) |
 | `500 Internal Server Error` | Falha inesperada no servidor |
