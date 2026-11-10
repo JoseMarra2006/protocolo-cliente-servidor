@@ -15,7 +15,7 @@ Página interativa (Swagger UI), gerada a partir da pasta [`docs/`](./docs). Ela
 O arquivo [`protocolo-cliente-servidor.yaml`](./protocolo-cliente-servidor.yaml) é uma especificação **OpenAPI 3.0.3** (também conhecida como "Swagger"). Ele descreve, de forma neutra a qualquer linguagem:
 
 - quais **rotas** (endpoints) existem;
-- qual **método HTTP** cada uma usa (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`);
+- qual **método HTTP** cada uma usa (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, e `OPTIONS` no preflight de CORS);
 - o formato exato do **corpo da requisição** (JSON) que cada rota espera;
 - o formato exato da **resposta** (JSON) que cada rota devolve;
 - quais **códigos de status HTTP** (200, 201, 400, 401, 404, 409...) cada rota pode retornar e em qual situação;
@@ -28,7 +28,7 @@ Não importa se seu servidor é feito em Node, Java, Python, C#, Go, PHP etc. �
 
 Como não podemos nos ajudar diretamente no código, este arquivo é o **único contrato** que garante que todo mundo vai conseguir se comunicar no dia da integração. Qualquer ambiguidade ou divergência de interpretação aqui vira um bug de interoperabilidade lá na frente — por isso o protocolo precisa ser lido com atenção e qualquer dúvida/sugestão deve virar uma issue ou PR (veja mais abaixo).
 
-## Escopo desta versão (1ª e 2ª entregas)
+## Escopo desta versão (1.5.0: 1ª e 2ª entregas)
 
 | Funcionalidade | Rota | Método | Quem pode |
 |---|---|---|---|
@@ -81,7 +81,7 @@ Essas credenciais já respeitam as restrições de dados do protocolo (nome de 3
 ## Como a autenticação funciona
 
 1. O cliente envia `email` e `senha` para `POST /sessions`.
-2. Se as credenciais baterem, o servidor cria uma sessão e responde com o **id da sessão**, o **token** (JWT) e os dados do usuário.
+2. Se as credenciais baterem, o servidor cria uma sessão e responde com o **id da sessão**, o **token** (por exemplo, um JWT) e os dados do usuário.
 3. O token deve ser enviado em toda requisição que exige autenticação, no header:
    ```
    Authorization: Bearer <token>
@@ -143,7 +143,7 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | Código | Quando acontece |
 |---|---|
 | `200 OK` | Operação de leitura/atualização concluída com sucesso |
-| `201 Created` | Usuário, sessão ou produto criado com sucesso |
+| `201 Created` | Usuário, sessão ou produto criado com sucesso, com o cabeçalho `Location` (regra 17) |
 | `204 No Content` | Logout ou remoção (de usuário ou produto) concluídos, sem corpo de resposta |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
 | `401 Unauthorized` | Token ausente, inválido ou já invalidado por logout |
@@ -164,6 +164,8 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 - **`ProductPatchRequest`** — mesmos campos, todos opcionais, mas pelo menos um precisa vir (usado no PATCH de produto)
 - **`ProductResponse`** — `{ id, nome, descricao, quantidade }`, todos obrigatórios
 - **`ErroResponse`** — `{ mensagem }` (corpo padrão de toda resposta de erro)
+- **`Email`** — string de 5 a 30 caracteres, com `@` e domínio
+- **`Senha`** — string alfanumérica de 6 a 20 caracteres, sem caracteres especiais
 - **`Nome`** — string de 3 a 50 caracteres, já com trim aplicado
 - **`NomeProduto`** — string de 2 a 100 caracteres, já com trim aplicado
 - **`Descricao`** — string de até 500 caracteres (pode ser vazia), já com trim aplicado
@@ -210,3 +212,5 @@ git merge upstream/main
 ## Versionamento
 
 O campo `version` no topo do YAML (`info.version`) é incrementado a cada mudança relevante no protocolo. Fique de olho nele — se você já implementou algo baseado numa versão anterior, um PR aceito pode exigir ajustes no seu cliente/servidor. O histórico de cada versão fica no log de commits do GitHub, não mais dentro do YAML.
+
+**Versão atual: 1.5.0.** Novidades em relação à 1.4.0: o ADM padrão fixo e igual em todos os servidores (seção "ADM padrão"); `DELETE /sessions/{id}` com sessão inexistente dá `403`, nunca `404` (regra 10); e toda resposta `201` leva o cabeçalho `Location` (regra 17).
