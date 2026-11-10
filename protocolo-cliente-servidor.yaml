@@ -92,6 +92,8 @@ paths:
         "whitelist" de sessões ativas (ou incluindo-a em uma "blacklist").
         O id da URL deve pertencer ao dono do token enviado no header
         Authorization; caso contrário, a exclusão é negada.
+        Uma sessão que não existe também não pertence ao dono do token e dá
+        403 (regra 10).
         Após o logout, o token não deve dar acesso a nenhuma rota além de
         POST /sessions e POST /users.
       security:
@@ -106,13 +108,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErroResponse'
         '403':
-          description: O id da sessão não pertence ao dono do token enviado.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErroResponse'
-        '404':
-          description: Sessão não encontrada.
+          description: O id da sessão não pertence ao dono do token enviado, inclusive quando a sessão não existe (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
           content:
             application/json:
               schema:
