@@ -109,6 +109,7 @@ Valem pra todo cliente e servidor, em qualquer linguagem:
 14. **Múltiplas sessões** — cada login bem-sucedido cria uma sessão nova e independente (id e token próprios), mesmo que o usuário já tenha outra ativa. `DELETE /sessions/{id}` encerra só aquela sessão.
 15. **Rota/método inexistente** — rota que não existe dá `404`; método não suportado numa rota que existe dá `405`. Ambos com corpo `ErroResponse` e cabeçalhos CORS.
 16. **Listas** — `GET /users` e `GET /products` devolvem um array JSON (vazio quando não há registros), ordenado por `id` crescente, sem paginação nem filtros.
+17. **Location nas criações** — toda resposta `201` leva o cabeçalho `Location` com o caminho do recurso criado, começando em `/api/v1` e sem esquema nem host (IP e porta variam de servidor para servidor): `/api/v1/users/{id}` em `POST /users`, `/api/v1/products/{id}` em `POST /products` e `/api/v1/sessions/{id}` em `POST /sessions`, onde `{id}` é o id do próprio recurso criado (no login, o id da sessão). O cabeçalho é informativo: o cliente não deve depender dele (o navegador só deixa o JavaScript ler cabeçalhos liberados por CORS, e `Location` não está entre eles) e usa o `id` que vem no corpo da resposta. O cliente deve funcionar mesmo se o `Location` vier ausente.
 
 ## Regras de validação de dados
 
