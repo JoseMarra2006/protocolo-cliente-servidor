@@ -8,13 +8,19 @@ info:
     Padroniza rotas, cabeçalhos, corpo de requisição (JSON) e respostas.
 
     Regras gerais (autenticação, CORS, formato de erro, ordem de validação, papéis
-    de usuário etc.) e histórico de versões estão documentados no README do repositório.
+    de usuário etc.) e o versionamento estão documentados no README do repositório.
+    O histórico de cada versão fica no log de commits do GitHub.
 
     Todo servidor possui o mesmo ADM padrão (nome "Admin", e-mail
     "adm@teste.com", senha "admin123"), criado automaticamente na
     inicialização se ainda não existir. Detalhes na seção "ADM padrão" do
     README.
-  version: 1.4.0
+
+    Valem para todas as rotas, mesmo sem aparecerem em cada resposta abaixo: os
+    cabeçalhos CORS (regra 5 do README, inclusive nas respostas de erro), o 404
+    para rota inexistente e o 405 para método não suportado (regra 15 do
+    README), ambos com corpo ErroResponse.
+  version: 1.5.0
 servers:
   - url: http://{ip}:{porta}/api/v1
     description: Servidor de qualquer aluno. IP e porta ficam a critério de quem usa o cliente; /api/v1 é fixo.
