@@ -41,6 +41,9 @@ paths:
       responses:
         '201':
           description: Sessão criada com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -185,6 +188,9 @@ paths:
       responses:
         '201':
           description: Usuário criado com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -488,6 +494,9 @@ paths:
       responses:
         '201':
           description: Produto criado com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -747,6 +756,10 @@ components:
       schema:
         type: string
         example: "Content-Type, Authorization"
+    Location:
+      description: Caminho do recurso criado, começando em /api/v1 e sem esquema nem host, no formato /api/v1/users/{id}, /api/v1/products/{id} ou /api/v1/sessions/{id}. Informativo, pois o cliente usa o id do corpo da resposta (regra 17 do README).
+      schema:
+        type: string
 
   responses:
     ErroInterno:
