@@ -8,8 +8,19 @@ info:
     Padroniza rotas, cabeçalhos, corpo de requisição (JSON) e respostas.
 
     Regras gerais (autenticação, CORS, formato de erro, ordem de validação, papéis
-    de usuário etc.) e histórico de versões estão documentados no README do repositório.
-  version: 1.4.0
+    de usuário etc.) e o versionamento estão documentados no README do repositório.
+    O histórico de cada versão fica no log de commits do GitHub.
+
+    Todo servidor possui o mesmo ADM padrão (nome "Admin", e-mail
+    "adm@teste.com", senha "admin123"), criado automaticamente na
+    inicialização se ainda não existir. Detalhes na seção "ADM padrão" do
+    README.
+
+    Valem para todas as rotas, mesmo sem aparecerem em cada resposta abaixo: os
+    cabeçalhos CORS (regra 5 do README, inclusive nas respostas de erro), o 404
+    para rota inexistente e o 405 para método não suportado (regra 15 do
+    README), ambos com corpo ErroResponse.
+  version: 1.5.0
 servers:
   - url: http://{ip}:{porta}/api/v1
     description: Servidor de qualquer aluno. IP e porta ficam a critério de quem usa o cliente; /api/v1 é fixo.
@@ -36,6 +47,9 @@ paths:
       responses:
         '201':
           description: Sessão criada com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -87,6 +101,8 @@ paths:
         "whitelist" de sessões ativas (ou incluindo-a em uma "blacklist").
         O id da URL deve pertencer ao dono do token enviado no header
         Authorization; caso contrário, a exclusão é negada.
+        Uma sessão que não existe também não pertence ao dono do token e dá
+        403 (regra 10).
         Após o logout, o token não deve dar acesso a nenhuma rota além de
         POST /sessions e POST /users.
       security:
@@ -101,13 +117,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErroResponse'
         '403':
-          description: O id da sessão não pertence ao dono do token enviado.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErroResponse'
-        '404':
-          description: Sessão não encontrada.
+          description: O id da sessão não pertence ao dono do token enviado, inclusive quando a sessão não existe (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
           content:
             application/json:
               schema:
@@ -170,8 +180,10 @@ paths:
         o servidor deve responder 409 e o cliente deve orientar o usuário a
         fazer login em vez de se cadastrar novamente.
         Sempre cria um usuário comum ("admin": false). Um campo "admin"
-        enviado no corpo é ignorado (regra 7): como cada servidor cria seus
-        ADMs fica fora do protocolo.
+        enviado no corpo é ignorado (regra 7). Nenhuma rota cria ADM: o ADM
+        padrão é criado pelo próprio servidor na inicialização (ver seção
+        "ADM padrão" do README). O e-mail do ADM padrão ("adm@teste.com")
+        também dá 409, como qualquer e-mail já cadastrado.
       security: []
       requestBody:
         required: true
@@ -182,6 +194,9 @@ paths:
       responses:
         '201':
           description: Usuário criado com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -392,6 +407,8 @@ paths:
         A exclusão derruba da whitelist todas as sessões desse usuário —
         depois disso, qualquer requisição com esses tokens dá 401. Confirmar
         com o usuário antes de chamar essa rota é responsabilidade do cliente.
+        Vale também para o ADM padrão, que não tem proteção especial (ver
+        seção "ADM padrão" do README).
       security:
         - bearerAuth: []
       responses:
@@ -483,6 +500,9 @@ paths:
       responses:
         '201':
           description: Produto criado com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -742,6 +762,10 @@ components:
       schema:
         type: string
         example: "Content-Type, Authorization"
+    Location:
+      description: Caminho do recurso criado, começando em /api/v1 e sem esquema nem host, no formato /api/v1/users/{id}, /api/v1/products/{id} ou /api/v1/sessions/{id}. Informativo, pois o cliente usa o id do corpo da resposta (regra 17 do README).
+      schema:
+        type: string
 
   responses:
     ErroInterno:
@@ -819,7 +843,7 @@ components:
           example: "aluno_joao@exemplo.com"
         admin:
           type: boolean
-          description: true se o usuário é ADM. Só leitura — não é alterado por nenhuma rota.
+          description: true se o usuário é ADM. Só leitura — não é alterado por nenhuma rota. Clientes decidem as telas de administração por este campo, nunca pelo e-mail nem pelo id.
           example: false
 
     ProductRequest:
