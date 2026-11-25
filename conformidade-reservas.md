@@ -19,6 +19,8 @@ Convenções usadas nas tabelas:
 - `{R}` é o `id` de uma reserva criada no próprio caso ou no caso anterior.
 - Toda resposta de erro deve ter o corpo `{"mensagem": "texto"}` (regra 6); as tabelas indicam só o código.
 
+Observação: o documento não tem casos com quantidades como `1.0` ou `1e3`, porque a regra 13 deixa essa forma a critério do servidor.
+
 ## Criar (`POST /orders`)
 
 | Caso | Passos | Resultado esperado | Regra |
@@ -102,6 +104,7 @@ Antes do grupo: A cria a reserva `{R}` com `{"produtoId": <id de P>, "quantidade
 | E04 | Com a reserva `{R}` de A ativa, o ADM envia `PUT /products/{id de P}` (ou `PATCH`) com `quantidade` 50; depois, `GET /products/{id de P}` e A envia `GET /orders/{R}`. | Estoque de P igual a 50. A reserva continua ativa (`200`), com a mesma `quantidade`. | 19 |
 | E05 | A faz um segundo login (sessão 2). Com o token da sessão 1 e com o da sessão 2, A envia `GET /orders`. | As duas listas são iguais. | 14, 21 |
 | E06 | Com o id do produto Q removido em E02, A envia `POST /orders` com `{"produtoId": <id de Q>, "quantidade": 1}`. | `404`. | 22 |
+| E07 | O ADM cadastra um produto S com `quantidade` 10. A reserva 2 unidades de S (estoque de S vai a 8). O ADM define `quantidade` 50 em S (`PUT` ou `PATCH`) e consulta o estoque; depois A cancela a reserva e o ADM consulta o estoque de novo. | Depois do ADM, o estoque de S é 50 e a reserva continua ativa; depois do cancelamento, o estoque de S é 52. | 19 |
 
 ## Concorrência
 

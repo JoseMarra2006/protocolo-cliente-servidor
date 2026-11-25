@@ -1180,7 +1180,7 @@ components:
           example: "Teclado ABNT2 com switch azul"
         quantidade:
           type: integer
-          description: Quantidade em estoque.
+          description: Quantidade em estoque. A partir da 1.6.0 é o estoque disponível, já descontadas as reservas ativas (regra 19 do README).
           example: 15
 
     OrderRequest:
@@ -1245,7 +1245,7 @@ components:
           type: string
           format: date-time
           pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
-          description: Instante da criação, em UTC, no formato AAAA-MM-DDTHH:MM:SSZ (sem frações de segundo).
+          description: Instante da criação, em UTC, no formato AAAA-MM-DDTHH:MM:SSZ (sem frações de segundo). Truncado (não arredondado para cima) para o segundo.
           example: "2026-11-25T18:30:00Z"
         expiraEm:
           type: string
@@ -1316,6 +1316,7 @@ components:
       description: |-
         Quantidade em estoque. Número inteiro JSON entre 0 e 1.000.000.
         Decimal (ex.: 1.5), negativo ou texto (ex.: "10") dá 400.
+        Ao cadastrar ou atualizar um produto, vale o estoque disponível (regra 19 do README).
       example: 15
 
     QuantidadeReserva:
