@@ -3,7 +3,7 @@ info:
   title: Protocolo de Comunicação - Autenticação, Usuários, Produtos e Reservas
   description: |-
     Modelo do protocolo REST/HTTP para autenticação (login/logout), CRUD de usuários
-    (incluindo a administração de usuários por um ADM) CRUD de produtos com
+    (incluindo a administração de usuários por um ADM), CRUD de produtos com
     controle de estoque e reservas de pedido com prazo de 3 minutos
     (criar, consultar, atualizar a quantidade e cancelar), para uso no trabalho
     prático da disciplina.

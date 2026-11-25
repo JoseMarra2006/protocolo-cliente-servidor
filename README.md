@@ -28,7 +28,7 @@ Não importa se seu servidor é feito em Node, Java, Python, C#, Go, PHP etc. �
 
 Como não podemos nos ajudar diretamente no código, este arquivo é o **único contrato** que garante que todo mundo vai conseguir se comunicar no dia da integração. Qualquer ambiguidade ou divergência de interpretação aqui vira um bug de interoperabilidade lá na frente — por isso o protocolo precisa ser lido com atenção e qualquer dúvida/sugestão deve virar uma issue ou PR (veja mais abaixo).
 
-## Escopo desta versão (1.5.0: 1ª e 2ª entregas)
+## Escopo desta versão (1.6.0: 1ª, 2ª e 3ª entregas)
 
 | Funcionalidade | Rota | Método | Quem pode |
 |---|---|---|---|
@@ -46,8 +46,16 @@ Como não podemos nos ajudar diretamente no código, este arquivo é o **único 
 | Atualizar produto (todos os campos) | `/products/{id}` | `PUT` | ADM |
 | Atualizar produto (campos parciais) | `/products/{id}` | `PATCH` | ADM |
 | Remover produto | `/products/{id}` | `DELETE` | ADM |
+| Listar minhas reservas ativas | `/orders` | `GET` | qualquer usuário logado (só as próprias) |
+| Criar reserva de pedido | `/orders` | `POST` | qualquer usuário logado |
+| Consultar reserva por id | `/orders/{id}` | `GET` | dono da reserva |
+| Atualizar quantidade da reserva | `/orders/{id}` | `PUT` | dono da reserva |
+| Atualizar quantidade da reserva | `/orders/{id}` | `PATCH` | dono da reserva |
+| Cancelar reserva | `/orders/{id}` | `DELETE` | dono da reserva |
 
 Login e logout são modelados como criação/remoção do recurso **sessão** (`/sessions`), em vez de rotas de ação tipo `/auth/login` — isso segue o princípio REST de identificar recursos, não ações (uma URL não deve descrever um verbo). Pelo mesmo motivo, consultar o estoque não tem rota própria: a quantidade em estoque é um campo do recurso **produto**, lido com `GET /products/{id}`.
+
+A reserva de pedido também é um **recurso** (`/orders`): criar a reserva é `POST`, cancelar é `DELETE` e atualizar a quantidade é `PUT` ou `PATCH`. Não existem rotas de ação como `/reservar` ou `/cancelar`. Esta versão não tem pagamento: a reserva dura 180 segundos e depois deixa de existir (regras 18 a 23).
 
 ## Papéis de usuário (comum e ADM)
 
@@ -57,6 +65,7 @@ Todo usuário tem o campo `admin` (booleano) em `UserResponse`, inclusive no `us
 - **ADM** pode listar, ler, atualizar e remover **qualquer** usuário (inclusive outro ADM ou a si mesmo) e é o único que cadastra, atualiza e remove produtos.
 - **Usuário comum** só mexe no próprio cadastro e só lê produtos.
 - Sessões continuam sendo só do dono: nem o ADM encerra a sessão de outra pessoa com `DELETE /sessions/{id}`. Remover um usuário encerra todas as sessões dele.
+- **Reservas** são do usuário que as criou, seja ele comum ou ADM: qualquer usuário logado cria e gerencia as próprias reservas, e ninguém acessa a reserva de outro usuário, nem o ADM (regra 21). Remover um usuário cancela as reservas dele (regra 23).
 
 ### ADM padrão
 
@@ -88,6 +97,36 @@ Essas credenciais já respeitam as restrições de dados do protocolo (nome de 3
    ```
 4. Nas rotas `/users/{id}` (GET, PUT, PATCH, DELETE), o servidor recebe o `id` do usuário na URL **e** o token no header. Ele precisa checar se aquele `id` pertence ao dono do token — se não pertencer **e o dono do token não for ADM**, responde `403 Forbidden`. Isso mantém a URL endereçando o recurso pelo seu id (RESTful), sem abrir brecha pra um usuário mexer no cadastro de outro só trocando o número na URL.
 5. `DELETE /sessions/{id}` faz o logout — `{id}` aqui é o **id da sessão** devolvido no login, não o token inteiro. Mesma regra: o id da sessão na URL precisa pertencer ao dono do token enviado. O servidor deve remover essa sessão de uma "whitelist" de sessões ativas (ou colocá-la numa "blacklist"). Depois do logout, o token daquela sessão não pode mais ser usado em nenhuma rota, exceto `POST /sessions` e `POST /users`.
+6. Nas rotas `/orders/{id}` (GET, PUT, PATCH, DELETE), o servidor também confere se a reserva pertence ao dono do token e, se não pertencer (ou não existir), responde `403 Forbidden`, sem exceção para o ADM (regra 21). `GET /orders` e `POST /orders` só exigem o token.
+
+## Como a reserva funciona (exemplo)
+
+Exemplo de uma reserva do começo ao fim. O produto 7 começa com `quantidade` 10 (estoque disponível). Todas as requisições levam `Authorization: Bearer <token>` e, quando há corpo, `Content-Type: application/json`.
+
+**1. Reservar 2 unidades** — `POST /api/v1/orders` com o corpo:
+```
+{"produtoId": 7, "quantidade": 2}
+```
+Resposta `201`, com `Location: /api/v1/orders/12`:
+```
+{"id":12,"produto":{"id":7,"nome":"Camarote Sexta","descricao":"Camarote com 4 lugares"},"quantidade":2,"criadaEm":"2026-11-25T18:30:00Z","expiraEm":"2026-11-25T18:33:00Z","tempoRestanteSegundos":180}
+```
+
+**2. O estoque já caiu** — `GET /api/v1/products/7` responde `200` com `quantidade` 8.
+
+**3. Consultar** — `GET /api/v1/orders/12` responde `200` com o mesmo corpo, e `tempoRestanteSegundos` menor (por exemplo, 150), porque o servidor calcula o tempo restante no instante de cada resposta. `criadaEm` e `expiraEm` não mudam.
+
+**4. Aumentar para 3 unidades** — `PUT /api/v1/orders/12` (ou `PATCH`) com o corpo
+```
+{"quantidade": 3}
+```
+Resposta `200` com a reserva atualizada. O prazo **não** é renovado. O estoque agora é 7. Se faltasse estoque para o aumento, a resposta seria `409` e a reserva ficaria com 2 unidades.
+
+**5. Cancelar** — `DELETE /api/v1/orders/12` responde `204` sem corpo, e `GET /api/v1/products/7` volta a mostrar `quantidade` 10.
+
+**6. Depois do cancelamento (ou da expiração)** — `GET /api/v1/orders/12` responde `403`, porque a reserva deixou de existir e, portanto, não pertence ao dono do token (regra 21).
+
+As regras completas estão nas regras 18 a 23, abaixo.
 
 ## Regras gerais do protocolo
 
@@ -108,8 +147,22 @@ Valem pra todo cliente e servidor, em qualquer linguagem:
 13. **Tipos e null** — todo campo deve ter o tipo certo (texto é string JSON); campo com tipo errado ou `null` dá `400`. Servidor não converte tipo. No PATCH, campo que não deve mudar simplesmente não é enviado.
 14. **Múltiplas sessões** — cada login bem-sucedido cria uma sessão nova e independente (id e token próprios), mesmo que o usuário já tenha outra ativa. `DELETE /sessions/{id}` encerra só aquela sessão.
 15. **Rota/método inexistente** — rota que não existe dá `404`; método não suportado numa rota que existe dá `405`. Ambos com corpo `ErroResponse` e cabeçalhos CORS.
-16. **Listas** — `GET /users` e `GET /products` devolvem um array JSON (vazio quando não há registros), ordenado por `id` crescente, sem paginação nem filtros.
-17. **Location nas criações** — toda resposta `201` leva o cabeçalho `Location` com o caminho do recurso criado, começando em `/api/v1` e sem esquema nem host (IP e porta variam de servidor para servidor): `/api/v1/users/{id}` em `POST /users`, `/api/v1/products/{id}` em `POST /products` e `/api/v1/sessions/{id}` em `POST /sessions`, onde `{id}` é o id do próprio recurso criado (no login, o id da sessão). O cabeçalho é informativo: o cliente não deve depender dele (o navegador só deixa o JavaScript ler cabeçalhos liberados por CORS, e `Location` não está entre eles) e usa o `id` que vem no corpo da resposta. O cliente deve funcionar mesmo se o `Location` vier ausente.
+16. **Listas** — `GET /users` e `GET /products` devolvem um array JSON (vazio quando não há registros), ordenado por `id` crescente, sem paginação nem filtros. `GET /orders` também devolve um array JSON, ordenado por `id` crescente, sem paginação nem filtros, mas só com as reservas ativas do dono do token (regra 21).
+17. **Location nas criações** — toda resposta `201` leva o cabeçalho `Location` com o caminho do recurso criado, começando em `/api/v1` e sem esquema nem host (IP e porta variam de servidor para servidor): `/api/v1/users/{id}` em `POST /users`, `/api/v1/products/{id}` em `POST /products` e `/api/v1/sessions/{id}` em `POST /sessions`, onde `{id}` é o id do próprio recurso criado (no login, o id da sessão). O cabeçalho é informativo: o cliente não deve depender dele (o navegador só deixa o JavaScript ler cabeçalhos liberados por CORS, e `Location` não está entre eles) e usa o `id` que vem no corpo da resposta. O cliente deve funcionar mesmo se o `Location` vier ausente. Em `POST /orders` vale o mesmo: o `Location` é `/api/v1/orders/{id}`, com o id da reserva criada.
+18. **Reservas de pedido** — a reserva é o recurso `/orders`: guarda uma quantidade de **um** produto para o usuário dono do token, por **180 segundos fixos** (o valor não é configurável, para que todos os clientes mostrem a mesma contagem). Cada `POST /orders` cria uma reserva nova e independente, mesmo para o mesmo produto, e não há limite de reservas por usuário. Esta versão não tem pagamento: ao fim dos 180 segundos a reserva expira e deixa de existir para todas as rotas (regra 20). A reserva ativa é o único estado que existe: depois de cancelada ou expirada, ela some.
+19. **Estoque disponível e consistência** — o campo `quantidade` de `ProductResponse` é o **estoque disponível**: o estoque já descontadas as reservas ativas. O formato e as regras de `/products` não mudam. Comportamento obrigatório e observável por qualquer cliente:
+    - `POST /orders` desconta a quantidade do estoque do produto **imediatamente**: o `GET /products/{id}` seguinte já mostra o valor menor.
+    - `DELETE /orders/{id}` devolve a quantidade reservada ao estoque **imediatamente**.
+    - `PUT` ou `PATCH` em `/orders/{id}`: reduzir a quantidade devolve a diferença; aumentar desconta a diferença, ou responde `409` sem mudar nada se o estoque não bastar.
+    - **Expiração:** a partir do instante `expiraEm`, nenhuma resposta considera a reserva ativa nem a desconta do estoque. Como o servidor consegue isso (temporizador, conferência a cada leitura etc.) é decisão de cada um.
+    - **Atomicidade:** conferir o estoque e descontá-lo é uma operação indivisível. Quando vários clientes pedem ao mesmo tempo mais do que cabe, a soma das quantidades aceitas nunca ultrapassa o estoque disponível. Em particular, com 1 unidade em estoque e N pedidos simultâneos de 1 unidade, **exatamente um** recebe `201` e os outros `N-1` recebem `409`.
+    - `quantidade` em `/products` nunca fica negativa.
+    - Operações sobre o mesmo produto (reservar, atualizar, cancelar, expirar e as escritas do ADM em `/products/{id}`) devem ter o efeito de terem sido executadas uma de cada vez.
+    - `PUT` e `PATCH` do ADM em `/products/{id}` continuam definindo diretamente a `quantidade` (o estoque disponível) e não alteram nem cancelam reservas existentes.
+20. **Prazo e formato de tempo** — `criadaEm` e `expiraEm` são texto no formato `AAAA-MM-DDTHH:MM:SSZ` (UTC, sem frações de segundo), e `expiraEm` é exatamente `criadaEm` mais 180 segundos. A reserva está ativa enquanto o instante atual do servidor for **menor** que `expiraEm`; em `expiraEm` ou depois, ela já não existe. `tempoRestanteSegundos` é o tempo até `expiraEm` no instante da resposta, em segundos, arredondado para cima (de 1 a 180). O relógio do servidor é a referência: o cliente **não** compara `expiraEm` com o relógio do próprio computador; ele usa o `tempoRestanteSegundos` recebido e conta a partir dele. Quando a contagem chega a zero, o cliente trata a reserva como expirada (e, se consultar, receberá `403`, regra 21). Atualizar a quantidade **não renova** o prazo: `criadaEm` e `expiraEm` ficam como estavam.
+21. **Titularidade das reservas** — a reserva pertence ao **usuário** que a criou, não à sessão: logout, ou ter várias sessões, não muda nada, e qualquer sessão do mesmo usuário enxerga as mesmas reservas. Em `/orders/{id}` só o dono do token acessa a reserva, sem exceção para o ADM. "Sem permissão" (`403`) é: a reserva não é do dono do token, **inclusive quando não existe** (id inexistente, reserva expirada ou cancelada), para qualquer usuário. Como em `DELETE /sessions/{id}`, essas rotas nunca devolvem `404`. `GET /orders` devolve só as reservas ativas do dono do token (nunca as de outro usuário, nem para o ADM). Qualquer usuário logado, comum ou ADM, pode criar reservas.
+22. **Ordem de validação em /orders** — a regra 10 continua valendo e se estende assim. Em `/orders/{id}`: `401` → `400` (id da URL mal formatado) → `403` (reserva não é do dono, inclusive inexistente) → `400` (corpo inválido, só em `PUT` e `PATCH`) → `409` (estoque insuficiente no aumento). Em `POST /orders`, que não tem id na URL: `401` → `400` (corpo inválido) → `404` (o produto de `produtoId` não existe) → `409` (estoque insuficiente). Aqui o `404` fala do produto citado no corpo, e por isso vem depois da validação do corpo. Estoque 0 é estoque insuficiente (`409`). `GET /orders` só tem o `401`.
+23. **Efeitos em usuários e produtos** — (a) `DELETE /users/{id}` cancela também todas as reservas ativas do usuário removido e devolve as quantidades ao estoque; quando a resposta `204` chega, o estoque já foi devolvido. (b) `DELETE /products/{id}` cancela as reservas ativas daquele produto e continua respondendo `204`, mesmo que existam reservas. (c) Se o ADM mudar `nome` ou `descricao` de um produto, o campo `produto` das reservas passa a mostrar os dados atuais. (d) Logout (`DELETE /sessions/{id}`) e expiração de token não afetam reservas.
 
 ## Regras de validação de dados
 
@@ -136,6 +189,14 @@ Estas regras estão embutidas no schema do YAML (`Email`, `Senha`, `Nome`, `Nome
 - Número inteiro JSON entre 0 e 1.000.000;
 - Decimal (`1.5`), negativo ou texto (`"10"`) dá `400`.
 
+**Id do produto na reserva (`produtoId`)**
+- Número inteiro JSON maior ou igual a 1;
+- Decimal, texto ou `null` dá `400`.
+
+**Quantidade da reserva**
+- Número inteiro JSON entre 1 e 1.000.000 (schema `QuantidadeReserva`);
+- Zero, decimal (`1.5`), negativo ou texto (`"2"`) dá `400`. Para desistir da reserva, use `DELETE /orders/{id}`.
+
 Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request`.
 
 ## Códigos de resposta esperados (resumo)
@@ -143,14 +204,14 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 | Código | Quando acontece |
 |---|---|
 | `200 OK` | Operação de leitura/atualização concluída com sucesso |
-| `201 Created` | Usuário, sessão ou produto criado com sucesso, com o cabeçalho `Location` (regra 17) |
-| `204 No Content` | Logout ou remoção (de usuário ou produto) concluídos, sem corpo de resposta |
+| `201 Created` | Usuário, sessão ou produto criado com sucesso, com o cabeçalho `Location` (regra 17). Também vale para a reserva criada em `POST /orders`. |
+| `204 No Content` | Logout ou remoção (de usuário ou produto) concluídos, sem corpo de resposta. Também vale para o cancelamento de reserva. |
 | `400 Bad Request` | Corpo mal formatado ou violando alguma restrição de validação |
 | `401 Unauthorized` | Token ausente, inválido ou já invalidado por logout |
-| `403 Forbidden` | Sem permissão: o `id` de usuário na URL não pertence ao dono do token e ele não é ADM; a sessão na URL não pertence ao dono do token (inclusive quando não existe, mesmo para ADM); ou a rota é exclusiva de ADM |
-| `404 Not Found` | Usuário ou produto com o `id` informado não existe, ou a rota não existe |
+| `403 Forbidden` | Sem permissão: o `id` de usuário na URL não pertence ao dono do token e ele não é ADM; a sessão na URL não pertence ao dono do token (inclusive quando não existe, mesmo para ADM); ou a rota é exclusiva de ADM. Em `/orders/{id}`: a reserva não pertence ao dono do token, inclusive quando não existe, expirou ou foi cancelada, mesmo para ADM (regra 21). |
+| `404 Not Found` | Usuário ou produto com o `id` informado não existe, ou a rota não existe. Em `POST /orders`: o produto de `produtoId` não existe (regra 22). |
 | `405 Method Not Allowed` | Método HTTP não suportado numa rota que existe |
-| `409 Conflict` | E-mail já cadastrado (por outro usuário, no cadastro ou no PUT/PATCH) |
+| `409 Conflict` | E-mail já cadastrado (por outro usuário, no cadastro ou no PUT/PATCH). Em `/orders`: estoque insuficiente (regra 22). |
 | `500 Internal Server Error` | Falha inesperada no servidor |
 
 ## Estrutura dos dados (schemas)
@@ -163,6 +224,10 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 - **`ProductRequest`** — `{ nome, descricao, quantidade }` (usado no cadastro e no PUT de produto, todos obrigatórios)
 - **`ProductPatchRequest`** — mesmos campos, todos opcionais, mas pelo menos um precisa vir (usado no PATCH de produto)
 - **`ProductResponse`** — `{ id, nome, descricao, quantidade }`, todos obrigatórios
+- **`OrderRequest`** — `{ produtoId, quantidade }` (usado em `POST /orders`, ambos obrigatórios)
+- **`OrderUpdateRequest`** — `{ quantidade }` (usado em `PUT` e `PATCH` de `/orders/{id}`, obrigatório; um `produtoId` enviado é ignorado)
+- **`ProdutoDaReserva`** — `{ id, nome, descricao }`, todos obrigatórios (dados atuais do produto; não inclui o estoque)
+- **`OrderResponse`** — `{ id, produto: ProdutoDaReserva, quantidade, criadaEm, expiraEm, tempoRestanteSegundos }`, todos obrigatórios
 - **`ErroResponse`** — `{ mensagem }` (corpo padrão de toda resposta de erro)
 - **`Email`** — string de 5 a 30 caracteres, com `@` e domínio
 - **`Senha`** — string alfanumérica de 6 a 20 caracteres, sem caracteres especiais
@@ -170,6 +235,7 @@ Se um campo não seguir essas regras, o servidor deve responder `400 Bad Request
 - **`NomeProduto`** — string de 2 a 100 caracteres, já com trim aplicado
 - **`Descricao`** — string de até 500 caracteres (pode ser vazia), já com trim aplicado
 - **`Quantidade`** — inteiro de 0 a 1.000.000
+- **`QuantidadeReserva`** — inteiro de 1 a 1.000.000
 
 Consulte o YAML diretamente para ver os exemplos completos de cada campo — ele pode ser aberto em qualquer editor com suporte a OpenAPI (VS Code com extensão, [Swagger Editor](https://editor.swagger.io/), Insomnia, Postman etc.) pra visualizar de forma mais amigável.
 
@@ -213,4 +279,6 @@ git merge upstream/main
 
 O campo `version` no topo do YAML (`info.version`) é incrementado a cada mudança relevante no protocolo. Fique de olho nele — se você já implementou algo baseado numa versão anterior, um PR aceito pode exigir ajustes no seu cliente/servidor. O histórico de cada versão fica no log de commits do GitHub, não mais dentro do YAML.
 
-**Versão atual: 1.5.0.** Novidades em relação à 1.4.0: o ADM padrão fixo e igual em todos os servidores (seção "ADM padrão"); `DELETE /sessions/{id}` com sessão inexistente dá `403`, nunca `404` (regra 10); e toda resposta `201` leva o cabeçalho `Location` (regra 17).
+**Versão atual: 1.6.0.** Novidades em relação à 1.5.0: reservas de pedido (`/orders`, regras 18 a 23), com criar, listar as próprias, consultar, atualizar a quantidade e cancelar, e prazo fixo de 180 segundos; o campo `quantidade` de `/products` passa a ser o estoque disponível, já descontadas as reservas ativas (regra 19); remover usuário ou produto cancela as reservas relacionadas (regra 23). Tudo é aditivo: nenhuma rota, campo ou regra da 1.5.0 foi alterado.
+
+**Versão 1.5.0.** Novidades em relação à 1.4.0: o ADM padrão fixo e igual em todos os servidores (seção "ADM padrão"); `DELETE /sessions/{id}` com sessão inexistente dá `403`, nunca `404` (regra 10); e toda resposta `201` leva o cabeçalho `Location` (regra 17).
