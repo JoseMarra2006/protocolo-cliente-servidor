@@ -1,10 +1,12 @@
 openapi: 3.0.3
 info:
-  title: Protocolo de Comunicação - Autenticação, Usuários e Produtos
+  title: Protocolo de Comunicação - Autenticação, Usuários, Produtos e Reservas
   description: |-
     Modelo do protocolo REST/HTTP para autenticação (login/logout), CRUD de usuários
-    (incluindo a administração de usuários por um ADM) e CRUD de produtos com
-    controle de estoque, para uso no trabalho prático da disciplina.
+    (incluindo a administração de usuários por um ADM) CRUD de produtos com
+    controle de estoque e reservas de pedido com prazo de 3 minutos
+    (criar, consultar, atualizar a quantidade e cancelar), para uso no trabalho
+    prático da disciplina.
     Padroniza rotas, cabeçalhos, corpo de requisição (JSON) e respostas.
 
     Regras gerais (autenticação, CORS, formato de erro, ordem de validação, papéis
@@ -20,7 +22,7 @@ info:
     cabeçalhos CORS (regra 5 do README, inclusive nas respostas de erro), o 404
     para rota inexistente e o 405 para método não suportado (regra 15 do
     README), ambos com corpo ErroResponse.
-  version: 1.5.0
+  version: 1.6.0
 servers:
   - url: http://{ip}:{porta}/api/v1
     description: Servidor de qualquer aluno. IP e porta ficam a critério de quem usa o cliente; /api/v1 é fixo.
@@ -734,6 +736,297 @@ paths:
             Access-Control-Allow-Headers:
               $ref: '#/components/headers/AccessControlAllowHeaders'
 
+  /orders:
+    get:
+      summary: Listar minhas reservas ativas
+      description: |-
+        Retorna as reservas ativas do dono do token, ordenadas por id
+        crescente. Sem paginação. Reservas de outros usuários nunca
+        aparecem, nem para o ADM. Reservas expiradas ou canceladas não
+        aparecem (regras 18 a 23 do README).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista recuperada com sucesso (pode ser vazia).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    post:
+      summary: Criar reserva de pedido
+      description: |-
+        Reserva uma quantidade de um produto por 180 segundos. O estoque do
+        produto é descontado imediatamente (a quantidade devolvida em
+        /products passa a ser o estoque disponível, regra 19). Liberado para
+        qualquer usuário autenticado (comum ou ADM). Ordem de validação:
+        401 → 400 (corpo) → 404 (produto) → 409 (estoque insuficiente),
+        regra 22.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        '201':
+          description: Reserva criada com sucesso.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Corpo mal formatado, campo obrigatório ausente ou fora das restrições (produtoId inteiro maior ou igual a 1, quantidade inteira de 1 a 1.000.000). Inclui campo com tipo errado ou valor null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '404':
+          description: O produto informado em produtoId não existe.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '409':
+          description: Estoque insuficiente. A quantidade pedida é maior que a quantidade disponível do produto (inclusive quando o estoque é 0). Nada é reservado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    options:
+      summary: Preflight CORS
+      description: Checagem automática do navegador antes de GET ou POST /orders. Sem token, sem corpo.
+      security: []
+      responses:
+        '204':
+          description: Preflight aceito.
+          headers:
+            Access-Control-Allow-Origin:
+              $ref: '#/components/headers/AccessControlAllowOrigin'
+            Access-Control-Allow-Methods:
+              $ref: '#/components/headers/AccessControlAllowMethods'
+            Access-Control-Allow-Headers:
+              $ref: '#/components/headers/AccessControlAllowHeaders'
+
+  /orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: Identificador único da reserva
+        required: true
+        schema:
+          type: integer
+          example: 1
+
+    get:
+      summary: Consultar reserva por ID
+      description: |-
+        Retorna os dados da reserva (dados do produto, quantidade reservada
+        e tempo restante). A reserva precisa pertencer ao dono do token,
+        sem exceção para o ADM; caso contrário a consulta é negada (regra 21).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reserva encontrada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: O id informado na URL não é um número inteiro válido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '403':
+          description: A reserva não pertence ao dono do token, inclusive quando não existe, expirou ou foi cancelada (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    put:
+      summary: Atualizar a quantidade da reserva
+      description: |-
+        Define a nova quantidade reservada. PUT e PATCH têm o mesmo efeito
+        e o mesmo corpo (só a quantidade muda; o produto de uma reserva não
+        muda). Reduzir devolve a diferença ao estoque; aumentar exige estoque
+        disponível para a diferença, senão 409 e a reserva fica como estava.
+        Quantidade igual à atual responde 200 sem mudança. NÃO renova o prazo
+        de 180 segundos (regra 20). Só a reserva ativa do dono pode ser
+        atualizada (regra 21).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderUpdateRequest'
+      responses:
+        '200':
+          description: Reserva atualizada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Corpo mal formatado, quantidade ausente ou fora das restrições, ou id da URL inválido. Inclui campo com tipo errado ou valor null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '403':
+          description: A reserva não pertence ao dono do token, inclusive quando não existe, expirou ou foi cancelada (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '409':
+          description: Estoque insuficiente para o aumento pedido. A reserva permanece com a quantidade anterior.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    patch:
+      summary: Atualizar a quantidade da reserva (parcial)
+      description: |-
+        Mesmo efeito, corpo e respostas do PUT: o único campo atualizável
+        da reserva é a quantidade, e ela é obrigatória (corpo sem quantidade
+        dá 400). Existe para clientes que usam PATCH em atualizações
+        parciais; todo servidor implementa PUT e PATCH.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderUpdateRequest'
+      responses:
+        '200':
+          description: Reserva atualizada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Corpo mal formatado, quantidade ausente ou fora das restrições, ou id da URL inválido. Inclui campo com tipo errado ou valor null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '403':
+          description: A reserva não pertence ao dono do token, inclusive quando não existe, expirou ou foi cancelada (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '409':
+          description: Estoque insuficiente para o aumento pedido. A reserva permanece com a quantidade anterior.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    delete:
+      summary: Cancelar reserva
+      description: |-
+        Cancela a reserva ativa do dono do token. A quantidade reservada
+        volta imediatamente ao estoque disponível do produto. Confirmar com
+        o usuário antes de chamar essa rota é responsabilidade do cliente.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Reserva cancelada com sucesso, sem conteúdo de retorno.
+        '400':
+          description: O id informado na URL não é um número inteiro válido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '401':
+          description: Token ausente ou inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '403':
+          description: A reserva não pertence ao dono do token, inclusive quando não existe, expirou ou já foi cancelada (para qualquer usuário, ADM incluso). Esta rota nunca devolve 404.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+
+    options:
+      summary: Preflight CORS
+      description: Checagem automática do navegador antes de GET, PUT, PATCH ou DELETE /orders/{id}. Sem token, sem corpo.
+      security: []
+      responses:
+        '204':
+          description: Preflight aceito.
+          headers:
+            Access-Control-Allow-Origin:
+              $ref: '#/components/headers/AccessControlAllowOrigin'
+            Access-Control-Allow-Methods:
+              $ref: '#/components/headers/AccessControlAllowMethods'
+            Access-Control-Allow-Headers:
+              $ref: '#/components/headers/AccessControlAllowHeaders'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -763,7 +1056,7 @@ components:
         type: string
         example: "Content-Type, Authorization"
     Location:
-      description: Caminho do recurso criado, começando em /api/v1 e sem esquema nem host, no formato /api/v1/users/{id}, /api/v1/products/{id} ou /api/v1/sessions/{id}. Informativo, pois o cliente usa o id do corpo da resposta (regra 17 do README).
+      description: Caminho do recurso criado, começando em /api/v1 e sem esquema nem host, no formato /api/v1/users/{id}, /api/v1/products/{id}, /api/v1/orders/{id} ou /api/v1/sessions/{id}. Informativo, pois o cliente usa o id do corpo da resposta (regra 17 do README).
       schema:
         type: string
 
@@ -890,6 +1183,88 @@ components:
           description: Quantidade em estoque.
           example: 15
 
+    OrderRequest:
+      type: object
+      required:
+        - produtoId
+        - quantidade
+      properties:
+        produtoId:
+          type: integer
+          minimum: 1
+          description: Id do produto a reservar.
+          example: 1
+        quantidade:
+          $ref: '#/components/schemas/QuantidadeReserva'
+
+    OrderUpdateRequest:
+      type: object
+      required:
+        - quantidade
+      description: |-
+        Usado em PUT e PATCH, com o mesmo efeito: define a nova quantidade
+        reservada. O produto de uma reserva não muda: um campo produtoId
+        enviado aqui é ignorado (regra 7).
+      properties:
+        quantidade:
+          $ref: '#/components/schemas/QuantidadeReserva'
+
+    ProdutoDaReserva:
+      type: object
+      required: [id, nome, descricao]
+      description: |-
+        Dados atuais do produto reservado. Não inclui o estoque do produto;
+        para isso use GET /products/{id}.
+      properties:
+        id:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: "Camarote Sexta"
+        descricao:
+          type: string
+          example: "Camarote com 4 lugares"
+
+    OrderResponse:
+      type: object
+      required: [id, produto, quantidade, criadaEm, expiraEm, tempoRestanteSegundos]
+      properties:
+        id:
+          type: integer
+          example: 1
+        produto:
+          $ref: '#/components/schemas/ProdutoDaReserva'
+        quantidade:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          description: Unidades reservadas. Não é o estoque do produto.
+          example: 2
+        criadaEm:
+          type: string
+          format: date-time
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+          description: Instante da criação, em UTC, no formato AAAA-MM-DDTHH:MM:SSZ (sem frações de segundo).
+          example: "2026-11-25T18:30:00Z"
+        expiraEm:
+          type: string
+          format: date-time
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+          description: criadaEm + 180 segundos, no mesmo formato. A reserva deixa de existir a partir deste instante (regra 20).
+          example: "2026-11-25T18:33:00Z"
+        tempoRestanteSegundos:
+          type: integer
+          minimum: 1
+          maximum: 180
+          description: |-
+            Segundos que faltam para expirar, calculados pelo servidor no
+            instante da resposta, arredondados para cima. Como a reserva só
+            aparece enquanto está ativa, o valor é sempre maior ou igual a 1.
+            O cliente usa este valor (e não o relógio do próprio computador)
+            para a contagem regressiva.
+          example: 180
+
     Email:
       type: string
       format: email
@@ -942,6 +1317,15 @@ components:
         Quantidade em estoque. Número inteiro JSON entre 0 e 1.000.000.
         Decimal (ex.: 1.5), negativo ou texto (ex.: "10") dá 400.
       example: 15
+
+    QuantidadeReserva:
+      type: integer
+      minimum: 1
+      maximum: 1000000
+      description: |-
+        Unidades de uma reserva. Número inteiro JSON entre 1 e 1.000.000.
+        Zero, decimal (ex.: 1.5), negativo ou texto (ex.: "2") dá 400.
+      example: 2
 
     ErroResponse:
       type: object
